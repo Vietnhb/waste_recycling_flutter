@@ -151,7 +151,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                   const SizedBox(height: 14),
                   OutlinedButton.icon(
-                    onPressed: widget.controller.logout,
+                    onPressed: () =>
+                        logoutToHome(context, widget.controller.logout),
                     icon: const Icon(Icons.logout_rounded),
                     label: const Text('Đăng xuất'),
                   ),

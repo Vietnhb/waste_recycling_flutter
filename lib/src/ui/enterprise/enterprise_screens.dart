@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -29,7 +31,7 @@ class EnterpriseScreen extends StatelessWidget {
           actions: [
             IconButton(
               tooltip: 'Đăng xuất',
-              onPressed: controller.logout,
+              onPressed: () => logoutToHome(context, controller.logout),
               icon: const Icon(Icons.logout_rounded),
             ),
           ],

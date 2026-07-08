@@ -6,12 +6,14 @@ import '../core/json_helpers.dart';
 import '../core/platform_config.dart';
 import '../models/models.dart';
 import '../services/api_service.dart';
+import '../services/realtime_service.dart';
 
 class AppController extends ChangeNotifier {
   String baseUrl = defaultApiBaseUrl();
   String? token;
   User? user;
   bool booting = true;
+  final realtime = RealtimeService();
 
   SharedPreferences? _prefs;
 
@@ -24,6 +26,7 @@ class AppController extends ChangeNotifier {
     if (token != null) {
       try {
         user = await api.getMe();
+        realtime.connect(baseUrl: baseUrl, token: token!);
       } catch (_) {
         token = null;
         await _prefs?.remove('token');
@@ -38,6 +41,7 @@ class AppController extends ChangeNotifier {
     if (normalized.isEmpty) return;
     baseUrl = normalized;
     await _prefs?.setString('baseUrl', baseUrl);
+    if (token != null) realtime.connect(baseUrl: baseUrl, token: token!);
     notifyListeners();
   }
 
@@ -50,6 +54,7 @@ class AppController extends ChangeNotifier {
     token = asString(data['token']);
     user = User.fromJson(Map<String, dynamic>.from(data['user']));
     await _prefs?.setString('token', token!);
+    realtime.connect(baseUrl: baseUrl, token: token!);
     notifyListeners();
   }
 
@@ -70,7 +75,14 @@ class AppController extends ChangeNotifier {
   Future<void> logout() async {
     token = null;
     user = null;
+    realtime.disconnect();
     await _prefs?.remove('token');
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    realtime.dispose();
+    super.dispose();
   }
 }

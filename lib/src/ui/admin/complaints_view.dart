@@ -12,11 +12,22 @@ class AdminComplaintsView extends StatefulWidget {
 class _AdminComplaintsViewState extends State<AdminComplaintsView> {
   List<Complaint> _complaints = const [];
   bool _loading = true;
+  StreamSubscription<JsonMap>? _realtimeSub;
 
   @override
   void initState() {
     super.initState();
     _load();
+    _realtimeSub = widget.controller.realtime.events.listen((event) {
+      final type = asString(event['type']);
+      if (type.startsWith('COMPLAINT_')) _load();
+    });
+  }
+
+  @override
+  void dispose() {
+    _realtimeSub?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {

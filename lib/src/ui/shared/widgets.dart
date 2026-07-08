@@ -31,6 +31,14 @@ T? validDropdownValue<T>(T? value, Iterable<T> values) {
   return values.contains(value) ? value : null;
 }
 
+String formatAddressLine(String addressNumber, String detailAddress) {
+  final number = addressNumber.trim();
+  final detail = detailAddress.trim();
+  if (number.isEmpty) return detail;
+  if (detail.isEmpty) return number;
+  return '$number $detail';
+}
+
 void showSnack(BuildContext context, String message) {
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
@@ -41,6 +49,15 @@ void showSnack(BuildContext context, String message) {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
     );
+}
+
+Future<void> logoutToHome(
+  BuildContext context,
+  Future<void> Function() logout,
+) async {
+  await logout();
+  if (!context.mounted) return;
+  Navigator.of(context, rootNavigator: true).popUntil((route) => route.isFirst);
 }
 
 Future<bool> confirmDialog(BuildContext context, String message) async {
@@ -109,6 +126,58 @@ Color statusColor(String status) {
   }
 }
 
+String statusText(String status) {
+  switch (status) {
+    case 'PENDING':
+      return 'Chờ duyệt';
+    case 'ACCEPTED':
+      return 'Đã tiếp nhận';
+    case 'ASSIGNED':
+      return 'Đã gán xe';
+    case 'ON_THE_WAY':
+      return 'Xe đang đến';
+    case 'COLLECTED':
+      return 'Đã thu gom';
+    case 'RESOLVED':
+      return 'Đã xử lý';
+    case 'AVAILABLE':
+      return 'Sẵn sàng';
+    case 'BUSY':
+      return 'Đang bận';
+    case 'OFFLINE':
+      return 'Nghỉ';
+    case 'REJECTED':
+      return 'Từ chối';
+    default:
+      return status;
+  }
+}
+
+IconData statusIcon(String status) {
+  switch (status) {
+    case 'PENDING':
+      return Icons.schedule_rounded;
+    case 'ACCEPTED':
+      return Icons.inventory_2_rounded;
+    case 'ASSIGNED':
+      return Icons.assignment_ind_rounded;
+    case 'ON_THE_WAY':
+      return Icons.local_shipping_rounded;
+    case 'COLLECTED':
+    case 'RESOLVED':
+      return Icons.check_circle_rounded;
+    case 'AVAILABLE':
+      return Icons.play_circle_rounded;
+    case 'BUSY':
+      return Icons.pause_circle_rounded;
+    case 'OFFLINE':
+    case 'REJECTED':
+      return Icons.cancel_rounded;
+    default:
+      return Icons.info_rounded;
+  }
+}
+
 class StatusChip extends StatelessWidget {
   const StatusChip(this.status, {super.key});
 
@@ -118,7 +187,7 @@ class StatusChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = statusColor(status);
     return Chip(
-      label: Text(status),
+      label: Text(statusText(status)),
       labelStyle: TextStyle(color: color, fontWeight: FontWeight.w700),
       backgroundColor: color.withValues(alpha: 0.11),
       side: BorderSide(color: color.withValues(alpha: 0.2)),
@@ -248,8 +317,10 @@ class ReportCard extends StatelessWidget {
             const SizedBox(height: 8),
             Text(report.description),
             const SizedBox(height: 6),
-            Text('Địa chỉ: ${report.addressNumber} ${report.addressDetail}'),
-            Text('Citizen: ${report.citizenName} (${report.citizenEmail})'),
+            Text(
+              'Địa chỉ: ${formatAddressLine(report.addressNumber, report.addressDetail)}',
+            ),
+            Text('Người dân: ${report.citizenName} (${report.citizenEmail})'),
             Text('Khối lượng: ${report.weight?.toStringAsFixed(1) ?? '-'} kg'),
             Text('Ngày tạo: ${formatDate(report.createdAt)}'),
             if (report.status == 'COLLECTED') ...[

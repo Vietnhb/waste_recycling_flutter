@@ -32,7 +32,7 @@ class _EnterpriseStatisticsViewState extends State<EnterpriseStatisticsView> {
     try {
       final results = await Future.wait([
         widget.controller.api.getCategories(),
-        AreaDirectory.load(),
+        AreaDirectory.load(api: widget.controller.api),
       ]);
       if (!mounted) return;
       setState(() {

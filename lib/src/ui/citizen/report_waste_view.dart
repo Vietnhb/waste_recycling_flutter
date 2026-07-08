@@ -273,7 +273,10 @@ class _ReportWasteViewState extends State<ReportWasteView> {
                             (a) => DropdownMenuItem(
                               value: a.id,
                               child: Text(
-                                '${a.addressNumber} ${a.detailAddress}',
+                                formatAddressLine(
+                                  a.addressNumber,
+                                  a.detailAddress,
+                                ),
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),

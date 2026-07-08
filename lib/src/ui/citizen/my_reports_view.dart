@@ -15,21 +15,29 @@ class _MyReportsViewState extends State<MyReportsView> {
   int? _complainingReportId;
   final _complaintCtrl = TextEditingController();
   bool _loading = true;
+  StreamSubscription<JsonMap>? _realtimeSub;
 
   @override
   void initState() {
     super.initState();
     _load();
+    _realtimeSub = widget.controller.realtime.events.listen((event) {
+      final type = asString(event['type']);
+      if (type.startsWith('REPORT_') || type.startsWith('COMPLAINT_')) {
+        _load(silent: true);
+      }
+    });
   }
 
   @override
   void dispose() {
+    _realtimeSub?.cancel();
     _complaintCtrl.dispose();
     super.dispose();
   }
 
-  Future<void> _load() async {
-    setState(() => _loading = true);
+  Future<void> _load({bool silent = false}) async {
+    if (!silent) setState(() => _loading = true);
     try {
       final results = await Future.wait([
         widget.controller.api.getMyReports(),
@@ -44,7 +52,7 @@ class _MyReportsViewState extends State<MyReportsView> {
       if (!mounted) return;
       showSnack(context, e.toString());
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && !silent) setState(() => _loading = false);
     }
   }
 
@@ -118,7 +126,7 @@ class _MyReportsViewState extends State<MyReportsView> {
                           Text(complaint.description),
                           if (complaint.adminNote != null &&
                               complaint.adminNote!.isNotEmpty)
-                            Text('Admin: ${complaint.adminNote}'),
+                            Text('Ghi chú: ${complaint.adminNote}'),
                         ],
                       ),
                     ),
@@ -162,8 +170,104 @@ class _MyReportsViewState extends State<MyReportsView> {
                   );
                 }
               }
-              return ReportCard(report: report, trailing: trailing);
+              return ReportCard(
+                report: report,
+                trailing: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _CitizenTrackingStrip(report.status),
+                    if (trailing != null) ...[
+                      const SizedBox(height: 8),
+                      trailing,
+                    ],
+                  ],
+                ),
+              );
             }),
+        ],
+      ),
+    );
+  }
+}
+
+class _CitizenTrackingStrip extends StatelessWidget {
+  const _CitizenTrackingStrip(this.status);
+
+  final String status;
+
+  int get _step {
+    switch (status) {
+      case 'PENDING':
+        return 0;
+      case 'ACCEPTED':
+        return 1;
+      case 'ASSIGNED':
+        return 2;
+      case 'ON_THE_WAY':
+        return 3;
+      case 'COLLECTED':
+        return 4;
+      default:
+        return 0;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final steps = [
+      ('Chờ duyệt', Icons.schedule_rounded),
+      ('Đã nhận', Icons.inventory_2_rounded),
+      ('Đã gán xe', Icons.assignment_ind_rounded),
+      ('Xe đang đến', Icons.local_shipping_rounded),
+      ('Hoàn tất', Icons.check_circle_rounded),
+    ];
+
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: status == 'ON_THE_WAY'
+            ? AppPalette.sky.withValues(alpha: 0.1)
+            : AppPalette.mint,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppPalette.line),
+      ),
+      child: Row(
+        children: [
+          for (var i = 0; i < steps.length; i++) ...[
+            Expanded(
+              child: Column(
+                children: [
+                  Icon(
+                    steps[i].$2,
+                    size: 20,
+                    color: i <= _step ? AppPalette.primary : AppPalette.muted,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    steps[i].$1,
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: i == _step
+                          ? FontWeight.w900
+                          : FontWeight.w600,
+                      color: i <= _step
+                          ? AppPalette.primaryDark
+                          : AppPalette.muted,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (i != steps.length - 1)
+              Container(
+                width: 14,
+                height: 2,
+                color: i < _step ? AppPalette.primary : AppPalette.line,
+              ),
+          ],
         ],
       ),
     );

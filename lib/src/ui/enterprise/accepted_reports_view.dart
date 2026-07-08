@@ -14,11 +14,28 @@ class _AcceptedReportsViewState extends State<AcceptedReportsView> {
   List<Collector> _collectors = const [];
   final Map<int, int> _selectedCollector = {};
   bool _loading = true;
+  StreamSubscription<JsonMap>? _realtimeSub;
 
   @override
   void initState() {
     super.initState();
     _load();
+    _realtimeSub = widget.controller.realtime.events.listen((event) {
+      final type = asString(event['type']);
+      if (type == 'REPORT_ACCEPTED' ||
+          type == 'REPORT_ASSIGNED' ||
+          type == 'REPORT_STATUS_CHANGED' ||
+          type == 'REPORT_COLLECTED' ||
+          type == 'COLLECTOR_STATUS_CHANGED') {
+        _load();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _realtimeSub?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {

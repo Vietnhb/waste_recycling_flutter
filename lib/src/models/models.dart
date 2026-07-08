@@ -503,37 +503,53 @@ class Province {
   const Province({
     required this.code,
     required this.name,
+    required this.nameEn,
     required this.fullName,
+    required this.fullNameEn,
     required this.wards,
   });
 
   final String code;
   final String name;
+  final String nameEn;
   final String fullName;
+  final String fullNameEn;
   final List<Ward> wards;
 
   factory Province.fromJson(JsonMap json) {
     return Province(
-      code: asString(json['Code']),
-      name: asString(json['Name']),
-      fullName: asString(json['FullName']),
-      wards: parseList(json['Wards'], Ward.fromJson),
+      code: asString(json['Code'] ?? json['code']),
+      name: asString(json['Name'] ?? json['name']),
+      nameEn: asString(json['NameEn'] ?? json['name_en']),
+      fullName: asString(json['FullName'] ?? json['full_name']),
+      fullNameEn: asString(json['FullNameEn'] ?? json['full_name_en']),
+      wards: parseList(json['Wards'] ?? json['wards'], Ward.fromJson),
     );
   }
 }
 
 class Ward {
-  const Ward({required this.code, required this.name, required this.fullName});
+  const Ward({
+    required this.code,
+    required this.name,
+    required this.nameEn,
+    required this.fullName,
+    required this.fullNameEn,
+  });
 
   final String code;
   final String name;
+  final String nameEn;
   final String fullName;
+  final String fullNameEn;
 
   factory Ward.fromJson(JsonMap json) {
     return Ward(
-      code: asString(json['Code']),
-      name: asString(json['Name']),
-      fullName: asString(json['FullName']),
+      code: asString(json['Code'] ?? json['code']),
+      name: asString(json['Name'] ?? json['name']),
+      nameEn: asString(json['NameEn'] ?? json['name_en']),
+      fullName: asString(json['FullName'] ?? json['full_name']),
+      fullNameEn: asString(json['FullNameEn'] ?? json['full_name_en']),
     );
   }
 }

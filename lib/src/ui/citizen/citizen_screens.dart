@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -65,7 +66,7 @@ class _CitizenScreenState extends State<CitizenScreen>
         actions: [
           IconButton(
             tooltip: 'Đăng xuất',
-            onPressed: widget.controller.logout,
+            onPressed: () => logoutToHome(context, widget.controller.logout),
             icon: const Icon(Icons.logout_rounded),
           ),
         ],

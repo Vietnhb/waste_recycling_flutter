@@ -56,6 +56,9 @@ class ApiService {
   Future<List<UserAddress>> getAddresses() async =>
       parseList(await client.get('/user/addresses'), UserAddress.fromJson);
 
+  Future<List<Province>> getLocationData() async =>
+      parseList(await client.get('/locations/data'), Province.fromJson);
+
   Future<UserAddress> addAddress(JsonMap data) async => UserAddress.fromJson(
     Map<String, dynamic>.from(await client.post('/user/address', data)),
   );

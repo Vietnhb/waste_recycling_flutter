@@ -8,10 +8,7 @@ void main() {
 
     await tester.pumpWidget(WasteApp(controller: controller));
 
-    expect(find.text('Waste Recycling Platform'), findsOneWidget);
-    expect(
-      find.text('Crowdsourced Waste Collection & Recycling'),
-      findsOneWidget,
-    );
+    expect(find.text('GreenLoop'), findsOneWidget);
+    expect(find.text('Waste recycling network'), findsOneWidget);
   });
 }

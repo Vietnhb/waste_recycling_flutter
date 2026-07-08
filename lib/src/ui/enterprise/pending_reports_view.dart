@@ -14,11 +14,26 @@ class _PendingReportsViewState extends State<PendingReportsView> {
   List<PointRule> _rules = const [];
   final Map<int, int> _selectedRules = {};
   bool _loading = true;
+  StreamSubscription<JsonMap>? _realtimeSub;
 
   @override
   void initState() {
     super.initState();
     _load();
+    _realtimeSub = widget.controller.realtime.events.listen((event) {
+      final type = asString(event['type']);
+      if (type == 'REPORT_CREATED' ||
+          type == 'REPORT_ACCEPTED' ||
+          type == 'REPORT_REJECTED') {
+        _load();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _realtimeSub?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {

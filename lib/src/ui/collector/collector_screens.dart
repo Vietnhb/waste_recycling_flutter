@@ -1,5 +1,13 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../controllers/app_controller.dart';
@@ -22,11 +30,18 @@ class CollectorScreen extends StatelessWidget {
       length: 2,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Collector'),
+          title: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.local_shipping_rounded, color: AppPalette.primary),
+              SizedBox(width: 8),
+              Text('Tài xế thu gom'),
+            ],
+          ),
           actions: [
             IconButton(
               tooltip: 'Đăng xuất',
-              onPressed: controller.logout,
+              onPressed: () => logoutToHome(context, controller.logout),
               icon: const Icon(Icons.logout_rounded),
             ),
           ],
@@ -91,7 +106,7 @@ class _CollectorStatusDialogState extends State<CollectorStatusDialog> {
   Future<void> _save() async {
     if (_status == 'COLLECTED' &&
         (_file == null || asDouble(_weightCtrl.text) <= 0)) {
-      showSnack(context, 'COLLECTED cần ảnh xác nhận và khối lượng > 0');
+      showSnack(context, 'Hoàn tất thu gom cần ảnh xác nhận và khối lượng > 0');
       return;
     }
     setState(() => _saving = true);
@@ -119,7 +134,7 @@ class _CollectorStatusDialogState extends State<CollectorStatusDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text('Cập nhật #${widget.report.id}'),
+      title: Text('Cập nhật chuyến #${widget.report.id}'),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -131,11 +146,11 @@ class _CollectorStatusDialogState extends State<CollectorStatusDialog> {
                 if (widget.report.status == 'ASSIGNED')
                   const DropdownMenuItem(
                     value: 'ON_THE_WAY',
-                    child: Text('ON_THE_WAY'),
+                    child: Text('Bắt đầu đi lấy'),
                   ),
                 const DropdownMenuItem(
                   value: 'COLLECTED',
-                  child: Text('COLLECTED'),
+                  child: Text('Hoàn tất thu gom'),
                 ),
               ],
               onChanged: (value) => setState(() => _status = value ?? _status),
@@ -163,7 +178,7 @@ class _CollectorStatusDialogState extends State<CollectorStatusDialog> {
               ),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('Citizen phân loại đúng'),
+                title: const Text('Người dân phân loại đúng'),
                 value: _correct,
                 onChanged: (value) => setState(() => _correct = value),
               ),

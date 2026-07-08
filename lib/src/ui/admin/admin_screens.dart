@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../controllers/app_controller.dart';
@@ -23,7 +25,7 @@ class AdminScreen extends StatelessWidget {
           actions: [
             IconButton(
               tooltip: 'Đăng xuất',
-              onPressed: controller.logout,
+              onPressed: () => logoutToHome(context, controller.logout),
               icon: const Icon(Icons.logout_rounded),
             ),
           ],

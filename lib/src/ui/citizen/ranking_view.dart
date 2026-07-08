@@ -29,7 +29,7 @@ class _RankingViewState extends State<RankingView> {
     try {
       final results = await Future.wait([
         widget.controller.api.getPointHistory(),
-        AreaDirectory.load(),
+        AreaDirectory.load(api: widget.controller.api),
       ]);
       if (!mounted) return;
       setState(() {
