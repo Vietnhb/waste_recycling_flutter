@@ -10,6 +10,7 @@ class EnterpriseProfileView extends StatefulWidget {
 }
 
 class _EnterpriseProfileViewState extends State<EnterpriseProfileView> {
+  final _formKey = GlobalKey<FormState>();
   final _companyCtrl = TextEditingController();
   final _typesCtrl = TextEditingController();
   final _capacityCtrl = TextEditingController();
@@ -53,6 +54,7 @@ class _EnterpriseProfileViewState extends State<EnterpriseProfileView> {
   }
 
   Future<void> _save() async {
+    if (!_formKey.currentState!.validate()) return;
     final data = {
       'companyName': _companyCtrl.text.trim(),
       'acceptedWasteTypes': _typesCtrl.text.trim(),
@@ -70,7 +72,7 @@ class _EnterpriseProfileViewState extends State<EnterpriseProfileView> {
       await _load();
     } catch (e) {
       if (!mounted) return;
-      showSnack(context, e.toString());
+      showErrorSnack(context, e);
     }
   }
 
@@ -78,7 +80,7 @@ class _EnterpriseProfileViewState extends State<EnterpriseProfileView> {
   Widget build(BuildContext context) {
     if (_loading) return const Center(child: CircularProgressIndicator());
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppSpacing.cardPadding),
       children: [
         SectionTitle(
           _enterprise == null ? 'Đăng ký doanh nghiệp' : 'Hồ sơ doanh nghiệp',
@@ -95,53 +97,79 @@ class _EnterpriseProfileViewState extends State<EnterpriseProfileView> {
               trailing: Text('${_enterprise!.rating.toStringAsFixed(1)}/5'),
             ),
           ),
+        const SizedBox(height: AppSpacing.formGap),
         Card(
           child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                TextField(
-                  controller: _companyCtrl,
-                  decoration: inputDecoration(
-                    'Tên công ty',
-                    icon: Icons.apartment,
+            padding: const EdgeInsets.all(AppSpacing.cardPadding),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                children: [
+                  TextFormField(
+                    controller: _companyCtrl,
+                    decoration: inputDecoration(
+                      'Tên công ty',
+                      icon: Icons.apartment,
+                    ),
+                    validator: (value) =>
+                        (value == null || value.trim().isEmpty)
+                            ? 'Vui lòng nhập tên công ty'
+                            : null,
                   ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: _typesCtrl,
-                  decoration: inputDecoration(
-                    'Loại rác tiếp nhận (ORGANIC,RECYCLABLE,...)',
-                    icon: Icons.recycling,
+                  const SizedBox(height: AppSpacing.formGap),
+                  TextFormField(
+                    controller: _typesCtrl,
+                    decoration: inputDecoration(
+                      'Loại rác tiếp nhận (ORGANIC,RECYCLABLE,...)',
+                      icon: Icons.recycling,
+                    ),
+                    validator: (value) =>
+                        (value == null || value.trim().isEmpty)
+                            ? 'Vui lòng nhập loại rác tiếp nhận'
+                            : null,
                   ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: _capacityCtrl,
-                  keyboardType: TextInputType.number,
-                  decoration: inputDecoration(
-                    'Công suất kg/ngày',
-                    icon: Icons.speed,
+                  const SizedBox(height: AppSpacing.formGap),
+                  TextFormField(
+                    controller: _capacityCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: inputDecoration(
+                      'Công suất kg/ngày',
+                      icon: Icons.speed,
+                    ),
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return 'Vui lòng nhập công suất';
+                      }
+                      if (asDouble(value) <= 0) {
+                        return 'Công suất phải lớn hơn 0';
+                      }
+                      return null;
+                    },
                   ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: _areaCtrl,
-                  decoration: inputDecoration(
-                    'Khu vực phục vụ',
-                    icon: Icons.map,
+                  const SizedBox(height: AppSpacing.formGap),
+                  TextFormField(
+                    controller: _areaCtrl,
+                    decoration: inputDecoration(
+                      'Khu vực phục vụ',
+                      icon: Icons.map,
+                    ),
+                    validator: (value) =>
+                        (value == null || value.trim().isEmpty)
+                            ? 'Vui lòng nhập khu vực phục vụ'
+                            : null,
                   ),
-                ),
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: _save,
-                    icon: const Icon(Icons.save),
-                    label: Text(_enterprise == null ? 'Đăng ký' : 'Cập nhật'),
+                  const SizedBox(height: AppSpacing.formGap),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: _save,
+                      icon: const Icon(Icons.save),
+                      label:
+                          Text(_enterprise == null ? 'Đăng ký' : 'Cập nhật'),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -149,3 +177,4 @@ class _EnterpriseProfileViewState extends State<EnterpriseProfileView> {
     );
   }
 }
+
