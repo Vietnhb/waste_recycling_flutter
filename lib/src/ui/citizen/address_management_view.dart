@@ -59,7 +59,7 @@ class _AddressManagementViewState extends State<AddressManagementView> {
       });
     } catch (e) {
       if (!mounted) return;
-      showSnack(context, e.toString());
+      showErrorSnack(context, e);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -145,7 +145,7 @@ class _AddressManagementViewState extends State<AddressManagementView> {
       await _load();
     } catch (e) {
       if (!mounted) return;
-      showSnack(context, e.toString());
+      showErrorSnack(context, e);
     }
   }
 
@@ -159,7 +159,7 @@ class _AddressManagementViewState extends State<AddressManagementView> {
       await _load();
     } catch (e) {
       if (!mounted) return;
-      showSnack(context, e.toString());
+      showErrorSnack(context, e);
     }
   }
 
@@ -196,7 +196,7 @@ class _AddressManagementViewState extends State<AddressManagementView> {
       );
     } catch (e) {
       if (!mounted) return;
-      showSnack(context, e.toString());
+      showErrorSnack(context, e);
     }
   }
 
@@ -216,7 +216,7 @@ class _AddressManagementViewState extends State<AddressManagementView> {
       await _setLocation(LatLng(pos.latitude, pos.longitude), moveMap: true);
     } catch (e) {
       if (!mounted) return;
-      showSnack(context, e.toString());
+      showErrorSnack(context, e);
     }
   }
 

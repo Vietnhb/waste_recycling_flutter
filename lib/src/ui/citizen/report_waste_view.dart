@@ -63,7 +63,7 @@ class _ReportWasteViewState extends State<ReportWasteView> {
       });
     } catch (e) {
       if (!mounted) return;
-      showSnack(context, e.toString());
+      showErrorSnack(context, e);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -155,7 +155,7 @@ class _ReportWasteViewState extends State<ReportWasteView> {
       await _load();
     } catch (e) {
       if (!mounted) return;
-      showSnack(context, e.toString());
+      showErrorSnack(context, e);
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -164,190 +164,292 @@ class _ReportWasteViewState extends State<ReportWasteView> {
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Center(child: CircularProgressIndicator());
-    return RefreshIndicator(
-      onRefresh: _load,
-      child: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          const SectionTitle('Tạo báo cáo rác'),
-          if (_addresses.isEmpty)
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const EmptyState(
-                      'Bạn cần thêm địa chỉ trước khi tạo báo cáo.',
-                    ),
-                    const SizedBox(height: 10),
-                    FilledButton.icon(
-                      onPressed: widget.onAddAddress,
-                      icon: const Icon(Icons.add_location_alt_rounded),
-                      label: const Text('Thêm địa chỉ'),
-                    ),
-                  ],
-                ),
-              ),
-            )
-          else if (_categories.isEmpty)
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const EmptyState(
-                      'Chưa tải được danh mục loại rác. Hãy kiểm tra backend rồi tải lại.',
-                    ),
-                    const SizedBox(height: 10),
-                    FilledButton.icon(
-                      onPressed: _load,
-                      icon: const Icon(Icons.refresh_rounded),
-                      label: const Text('Tải lại'),
-                    ),
-                  ],
-                ),
-              ),
-            )
-          else
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    Row(
+
+    // --- Nội dung chính khi chưa có địa chỉ hoặc danh mục ---
+    if (_addresses.isEmpty) {
+      return _buildBlocker(
+        'Bạn cần thêm địa chỉ trước khi tạo báo cáo.',
+        buttonLabel: 'Thêm địa chỉ',
+        buttonIcon: Icons.add_location_alt_rounded,
+        onPressed: widget.onAddAddress,
+      );
+    }
+    if (_categories.isEmpty) {
+      return _buildBlocker(
+        'Không tải được danh mục loại rác.\nVui lòng kiểm tra kết nối mạng rồi thử lại.',
+        buttonLabel: 'Tải lại',
+        buttonIcon: Icons.refresh_rounded,
+        onPressed: _load,
+      );
+    }
+
+    // --- Layout chính: Form cuộn + Nút Submit ghim đáy ---
+    return Column(
+      children: [
+        // ── Phần cuộn ──
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: _load,
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                // ── CARD 1: Hình ảnh ──
+                const SectionTitle('Hình ảnh'),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        FilledButton.icon(
-                          onPressed: _pickImages,
-                          icon: const Icon(Icons.photo_library),
-                          label: const Text('Chọn ảnh'),
+                        Row(
+                          children: [
+                            FilledButton.icon(
+                              onPressed: _pickImages,
+                              icon: const Icon(Icons.photo_library),
+                              label: const Text('Chọn ảnh'),
+                            ),
+                            const SizedBox(width: 12),
+                            Text(
+                              '${_files.length}/5 ảnh',
+                              style: TextStyle(color: AppPalette.muted),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 12),
-                        Text('${_files.length}/5 ảnh'),
+                        if (_files.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            height: 92,
+                            child: ListView.separated(
+                              scrollDirection: Axis.horizontal,
+                              itemBuilder: (context, index) =>
+                                  XFilePreview(file: _files[index]),
+                              separatorBuilder: (_, _) =>
+                                  const SizedBox(width: 8),
+                              itemCount: _files.length,
+                            ),
+                          ),
+                        ],
                       ],
                     ),
-                    if (_files.isNotEmpty) ...[
-                      const SizedBox(height: 10),
-                      SizedBox(
-                        height: 92,
-                        child: ListView.separated(
-                          scrollDirection: Axis.horizontal,
-                          itemBuilder: (context, index) =>
-                              XFilePreview(file: _files[index]),
-                          separatorBuilder: (_, _) => const SizedBox(width: 8),
-                          itemCount: _files.length,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _descCtrl,
-                      minLines: 2,
-                      maxLines: 4,
-                      decoration: inputDecoration(
-                        'Mô tả rác',
-                        icon: Icons.notes,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: _weightCtrl,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      decoration: inputDecoration(
-                        'Khối lượng ước tính (kg)',
-                        icon: Icons.scale,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    DropdownButtonFormField<int>(
-                      initialValue: validDropdownValue(
-                        _addressId,
-                        _addresses.map((a) => a.id),
-                      ),
-                      decoration: inputDecoration('Địa chỉ', icon: Icons.place),
-                      items: _addresses
-                          .map(
-                            (a) => DropdownMenuItem(
-                              value: a.id,
-                              child: Text(
-                                formatAddressLine(
-                                  a.addressNumber,
-                                  a.detailAddress,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (value) => setState(() => _addressId = value),
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                // ── CARD 2: Chi tiết rác ──
+                const SectionTitle('Chi tiết rác'),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
                       children: [
-                        Expanded(
-                          child: DropdownButtonFormField<int>(
-                            initialValue: validDropdownValue(
-                              _categoryId,
-                              _categories.map((c) => c.id),
-                            ),
-                            decoration: inputDecoration(
-                              'Loại rác',
-                              icon: Icons.category,
-                            ),
-                            items: _categories
-                                .map(
-                                  (c) => DropdownMenuItem(
-                                    value: c.id,
-                                    child: Text(c.name),
-                                  ),
-                                )
-                                .toList(),
-                            onChanged: (value) =>
-                                setState(() => _categoryId = value),
+                        TextField(
+                          controller: _descCtrl,
+                          minLines: 2,
+                          maxLines: 4,
+                          decoration: inputDecoration(
+                            'Mô tả rác',
+                            icon: Icons.notes,
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        IconButton.filledTonal(
-                          tooltip: 'Gợi ý loại rác',
-                          onPressed: _suggestCategory,
-                          icon: const Icon(Icons.auto_awesome),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _weightCtrl,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          decoration: inputDecoration(
+                            'Khối lượng ước tính (kg)',
+                            icon: Icons.scale,
+                          ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 14),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton.icon(
-                        onPressed: _submitting ? null : _submit,
-                        icon: const Icon(Icons.send),
-                        label: Text(
-                          _submitting ? 'Đang gửi...' : 'Tạo báo cáo',
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                // ── CARD 3: Vị trí & Phân loại ──
+                const SectionTitle('Vị trí & Phân loại'),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      children: [
+                        DropdownButtonFormField<int>(
+                          initialValue: validDropdownValue(
+                            _addressId,
+                            _addresses.map((a) => a.id),
+                          ),
+                          decoration:
+                              inputDecoration('Địa chỉ', icon: Icons.place),
+                          items: _addresses
+                              .map(
+                                (a) => DropdownMenuItem(
+                                  value: a.id,
+                                  child: Text(
+                                    formatAddressLine(
+                                      a.addressNumber,
+                                      a.detailAddress,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (value) =>
+                              setState(() => _addressId = value),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: DropdownButtonFormField<int>(
+                                initialValue: validDropdownValue(
+                                  _categoryId,
+                                  _categories.map((c) => c.id),
+                                ),
+                                decoration: inputDecoration(
+                                  'Loại rác',
+                                  icon: Icons.category,
+                                ),
+                                items: _categories
+                                    .map(
+                                      (c) => DropdownMenuItem(
+                                        value: c.id,
+                                        child: Text(c.name),
+                                      ),
+                                    )
+                                    .toList(),
+                                onChanged: (value) =>
+                                    setState(() => _categoryId = value),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            IconButton.filledTonal(
+                              tooltip: 'Gợi ý loại rác',
+                              onPressed: _suggestCategory,
+                              icon: const Icon(Icons.auto_awesome),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                // ── Danh sách báo cáo gần đây ──
+                SectionTitle(
+                  'Báo cáo gần đây',
+                  action: IconButton(
+                    tooltip: 'Tải lại',
+                    onPressed: _load,
+                    icon: const Icon(Icons.refresh),
+                  ),
+                ),
+                if (_recentReports.isEmpty)
+                  const EmptyState('Chưa có báo cáo nào')
+                else
+                  ..._recentReports
+                      .take(5)
+                      .map((report) => ReportCard(report: report)),
+              ],
+            ),
+          ),
+        ),
+
+        // ── Sticky Bottom Bar ──
+        Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.08),
+                blurRadius: 8,
+                offset: const Offset(0, -2),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (_submitting)
+                const LinearProgressIndicator(minHeight: 3),
+              SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: FilledButton.icon(
+                      onPressed: _submitting ? null : _submit,
+                      icon: _submitting
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white70,
+                              ),
+                            )
+                          : const Icon(Icons.send_rounded),
+                      label: Text(
+                        _submitting ? 'Đang gửi báo cáo...' : 'Tạo báo cáo',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                     ),
-                  ],
+                  ),
                 ),
               ),
-            ),
-          const SizedBox(height: 16),
-          SectionTitle(
-            'Báo cáo gần đây',
-            action: IconButton(
-              tooltip: 'Tải lại',
-              onPressed: _load,
-              icon: const Icon(Icons.refresh),
-            ),
+            ],
           ),
-          if (_recentReports.isEmpty)
-            const EmptyState('Chưa có báo cáo nào')
-          else
-            ..._recentReports
-                .take(5)
-                .map((report) => ReportCard(report: report)),
-        ],
+        ),
+      ],
+    );
+  }
+
+  /// Widget blocker khi thiếu địa chỉ hoặc danh mục
+  Widget _buildBlocker(
+    String message, {
+    required String buttonLabel,
+    required IconData buttonIcon,
+    VoidCallback? onPressed,
+  }) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.info_outline_rounded, size: 48, color: AppPalette.muted),
+            const SizedBox(height: 16),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: AppPalette.muted,
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              onPressed: onPressed,
+              icon: Icon(buttonIcon),
+              label: Text(buttonLabel),
+            ),
+          ],
+        ),
       ),
     );
   }
