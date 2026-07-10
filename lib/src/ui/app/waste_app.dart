@@ -16,7 +16,7 @@ class WasteApp extends StatelessWidget {
       builder: (context, _) {
         return MaterialApp(
           debugShowCheckedModeBanner: false,
-          title: 'GreenLoop',
+          title: 'Tái Chế Xanh',
           theme: ThemeData(
             colorScheme: ColorScheme.fromSeed(
               seedColor: AppPalette.primary,

@@ -50,7 +50,7 @@ class DashboardScreen extends StatelessWidget {
           children: [
             Icon(Icons.recycling_rounded, color: AppPalette.primary),
             SizedBox(width: 8),
-            Text('GreenLoop'),
+            Text('Tái Chế Xanh'),
           ],
         ),
         actions: [
@@ -61,46 +61,62 @@ class DashboardScreen extends StatelessWidget {
           ),
         ],
       ),
-      body: ListView(
-        padding: EdgeInsets.fromLTRB(
-          width > 760 ? 32 : 16,
-          8,
-          width > 760 ? 32 : 16,
-          28,
-        ),
-        children: [
-          Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 1120),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _DashboardHero(
-                    user: user,
-                    onWorkspace: () => _openWorkspace(context),
-                    onProfile: () => _openProfile(context),
-                  ),
-                  const SizedBox(height: 18),
-                  _SectionHeader(
-                    title: 'Hôm nay',
-                    subtitle: _roleSubtitle(user.role),
-                  ),
-                  const SizedBox(height: 12),
-                  _ActionGrid(
-                    width: width,
-                    role: user.role,
-                    onWorkspace: () => _openWorkspace(context),
-                    onProfile: () => _openProfile(context),
-                  ),
-                  const SizedBox(height: 18),
-                  _AccountSummary(user: user),
-                ],
+      body: SafeArea(
+        bottom: false,
+        child: ListView(
+          padding: EdgeInsets.fromLTRB(
+            width > 760 ? 32 : 16,
+            16,
+            width > 760 ? 32 : 16,
+            28,
+          ),
+          children: [
+            Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 1120),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _DashboardHero(
+                      user: user,
+                      onWorkspace: () => _openWorkspace(context),
+                      onProfile: () => _openProfile(context),
+                    ),
+                    const SizedBox(height: 24),
+                    const _SectionHeader(
+                      title: 'Truy cập nhanh',
+                      subtitle: 'Các tính năng và nghiệp vụ chính của bạn.',
+                    ),
+                    const SizedBox(height: 12),
+                    _ActionGrid(
+                      width: width,
+                      role: user.role,
+                      onWorkspace: () => _openWorkspace(context),
+                      onProfile: () => _openProfile(context),
+                    ),
+                    const SizedBox(height: 18),
+                    _AccountSummary(user: user),
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
+  }
+}
+
+String _roleName(String role) {
+  switch (role) {
+    case 'ADMIN':
+      return 'Quản trị viên';
+    case 'ENTERPRISE':
+      return 'Doanh nghiệp';
+    case 'COLLECTOR':
+      return 'Nhân viên thu gom';
+    default:
+      return 'Công dân';
   }
 }
 
@@ -109,7 +125,7 @@ String _roleSubtitle(String role) {
     case 'ADMIN':
       return 'Theo dõi tài khoản và khiếu nại trong hệ thống.';
     case 'ENTERPRISE':
-      return 'Tiếp nhận báo cáo, phân công collector và theo dõi hiệu quả.';
+      return 'Tiếp nhận báo cáo, phân công thu gom và theo dõi hiệu quả.';
     case 'COLLECTOR':
       return 'Xem việc được giao và cập nhật tiến độ thu gom.';
     default:
@@ -132,10 +148,21 @@ class _DashboardHero extends StatelessWidget {
   Widget build(BuildContext context) {
     final wide = MediaQuery.sizeOf(context).width > 760;
     return Container(
-      padding: EdgeInsets.all(wide ? 26 : 20),
+      padding: EdgeInsets.all(wide ? 26 : 24),
       decoration: BoxDecoration(
-        color: AppPalette.primaryDark,
-        borderRadius: BorderRadius.circular(8),
+        gradient: const LinearGradient(
+          colors: [AppPalette.primaryDark, AppPalette.primary],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: AppPalette.primary.withValues(alpha: 0.3),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Row(
         children: [
@@ -145,18 +172,20 @@ class _DashboardHero extends StatelessWidget {
               children: [
                 Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
+                    horizontal: 12,
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(8),
+                    color: Colors.white.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
-                    user.role,
+                    _roleName(user.role).toUpperCase(),
                     style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.w800,
+                      fontSize: 12,
+                      letterSpacing: 1.2,
                     ),
                   ),
                 ),
@@ -166,42 +195,62 @@ class _DashboardHero extends StatelessWidget {
                   style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                     color: Colors.white,
                     fontWeight: FontWeight.w900,
-                    letterSpacing: 0,
-                    height: 1.08,
+                    letterSpacing: -0.5,
+                    height: 1.2,
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
                 Text(
                   _roleSubtitle(user.role),
                   style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: Colors.white.withValues(alpha: 0.82),
+                    color: Colors.white.withValues(alpha: 0.9),
                     height: 1.4,
                   ),
                 ),
-                const SizedBox(height: 18),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
+                const SizedBox(height: 24),
+                Row(
                   children: [
-                    FilledButton.icon(
-                      style: FilledButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        foregroundColor: AppPalette.primaryDark,
-                      ),
-                      onPressed: onWorkspace,
-                      icon: const Icon(Icons.arrow_forward_rounded),
-                      label: const Text('Mở workspace'),
-                    ),
-                    OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.white,
-                        side: BorderSide(
-                          color: Colors.white.withValues(alpha: 0.42),
+                    Expanded(
+                      child: FilledButton.icon(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          foregroundColor: AppPalette.primaryDark,
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        onPressed: onWorkspace,
+                        icon: const Icon(Icons.arrow_forward_rounded, size: 20),
+                        label: const Text(
+                          'Không gian',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      onPressed: onProfile,
-                      icon: const Icon(Icons.manage_accounts_outlined),
-                      label: const Text('Hồ sơ'),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          side: BorderSide(
+                            color: Colors.white.withValues(alpha: 0.5),
+                            width: 1.5,
+                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        onPressed: onProfile,
+                        icon: const Icon(Icons.manage_accounts_outlined, size: 20),
+                        label: const Text(
+                          'Hồ sơ',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -212,18 +261,24 @@ class _DashboardHero extends StatelessWidget {
             const SizedBox(width: 24),
             Container(
               width: 190,
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.1),
+                    blurRadius: 10,
+                  ),
+                ],
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Icon(
-                    Icons.workspace_premium_outlined,
-                    color: AppPalette.primary,
-                    size: 32,
+                    Icons.workspace_premium_rounded,
+                    color: AppPalette.amber,
+                    size: 36,
                   ),
                   const SizedBox(height: 16),
                   Text(
@@ -234,10 +289,11 @@ class _DashboardHero extends StatelessWidget {
                     ),
                   ),
                   const Text(
-                    'điểm xanh',
+                    'Điểm xanh',
                     style: TextStyle(
                       color: AppPalette.muted,
                       fontWeight: FontWeight.w700,
+                      fontSize: 16,
                     ),
                   ),
                 ],
@@ -288,19 +344,19 @@ List<Widget> _actionsForRole(
     case 'ADMIN':
       return [
         _ActionCard(
-          icon: Icons.people_alt_outlined,
+          icon: Icons.people_alt_rounded,
           title: 'Tài khoản',
           text: 'Quản lý người dùng và phân quyền.',
           onTap: onWorkspace,
         ),
         _ActionCard(
-          icon: Icons.report_problem_outlined,
+          icon: Icons.report_problem_rounded,
           title: 'Khiếu nại',
           text: 'Xem phản hồi và xử lý tranh chấp.',
           onTap: onWorkspace,
         ),
         _ActionCard(
-          icon: Icons.account_circle_outlined,
+          icon: Icons.account_circle_rounded,
           title: 'Hồ sơ',
           text: 'Cập nhật thông tin quản trị.',
           onTap: onProfile,
@@ -309,19 +365,19 @@ List<Widget> _actionsForRole(
     case 'ENTERPRISE':
       return [
         _ActionCard(
-          icon: Icons.inbox_outlined,
+          icon: Icons.inbox_rounded,
           title: 'Yêu cầu mới',
           text: 'Tiếp nhận báo cáo đang chờ xử lý.',
           onTap: onWorkspace,
         ),
         _ActionCard(
-          icon: Icons.groups_outlined,
-          title: 'Collector',
-          text: 'Tạo và phân công nhân sự thu gom.',
+          icon: Icons.groups_rounded,
+          title: 'Nhân viên thu gom',
+          text: 'Tạo và phân công nhân sự.',
           onTap: onWorkspace,
         ),
         _ActionCard(
-          icon: Icons.analytics_outlined,
+          icon: Icons.analytics_rounded,
           title: 'Thống kê',
           text: 'Theo dõi khối lượng và độ chính xác.',
           onTap: onWorkspace,
@@ -330,7 +386,7 @@ List<Widget> _actionsForRole(
     case 'COLLECTOR':
       return [
         _ActionCard(
-          icon: Icons.local_shipping_outlined,
+          icon: Icons.local_shipping_rounded,
           title: 'Công việc',
           text: 'Xem các báo cáo được giao.',
           onTap: onWorkspace,
@@ -342,7 +398,7 @@ List<Widget> _actionsForRole(
           onTap: onWorkspace,
         ),
         _ActionCard(
-          icon: Icons.account_circle_outlined,
+          icon: Icons.account_circle_rounded,
           title: 'Hồ sơ',
           text: 'Cập nhật thông tin cá nhân.',
           onTap: onProfile,
@@ -351,19 +407,19 @@ List<Widget> _actionsForRole(
     default:
       return [
         _ActionCard(
-          icon: Icons.add_location_alt_outlined,
+          icon: Icons.add_location_alt_rounded,
           title: 'Báo rác',
           text: 'Gửi vị trí, ảnh và loại rác cần thu gom.',
           onTap: onWorkspace,
         ),
         _ActionCard(
-          icon: Icons.location_on_outlined,
+          icon: Icons.location_on_rounded,
           title: 'Địa chỉ',
           text: 'Quản lý điểm thu gom thường dùng.',
           onTap: onWorkspace,
         ),
         _ActionCard(
-          icon: Icons.stars_outlined,
+          icon: Icons.stars_rounded,
           title: 'Điểm xanh',
           text: 'Xem lịch sử điểm và bảng xếp hạng.',
           onTap: onWorkspace,
@@ -388,23 +444,28 @@ class _ActionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.grey.withValues(alpha: 0.15)),
+      ),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
               Container(
-                width: 48,
-                height: 48,
+                width: 52,
+                height: 52,
                 decoration: BoxDecoration(
                   color: AppPalette.mint,
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(icon, color: AppPalette.primary),
+                child: Icon(icon, color: AppPalette.primary, size: 28),
               ),
-              const SizedBox(width: 14),
+              const SizedBox(width: 16),
               Expanded(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -417,6 +478,7 @@ class _ActionCard extends StatelessWidget {
                       style: const TextStyle(
                         color: AppPalette.ink,
                         fontWeight: FontWeight.w900,
+                        fontSize: 16,
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -426,7 +488,7 @@ class _ActionCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: AppPalette.muted,
-                        height: 1.3,
+                        height: 1.4,
                       ),
                     ),
                   ],
@@ -449,18 +511,31 @@ class _AccountSummary extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
+      elevation: 0,
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.grey.withValues(alpha: 0.15)),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Row(
           children: [
-            const Icon(Icons.verified_user_outlined, color: AppPalette.primary),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppPalette.mint,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.verified_user_rounded, color: AppPalette.primary),
+            ),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                '${user.email} · ${user.role}',
+                '${user.email} · ${_roleName(user.role).toUpperCase()}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontWeight: FontWeight.w800),
+                style: const TextStyle(fontWeight: FontWeight.w800, color: AppPalette.ink),
               ),
             ),
           ],
@@ -486,14 +561,18 @@ class _SectionHeader extends StatelessWidget {
           style: Theme.of(context).textTheme.titleLarge?.copyWith(
             fontWeight: FontWeight.w900,
             color: AppPalette.ink,
+            letterSpacing: -0.5,
           ),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 6),
         Text(
           subtitle,
           style: Theme.of(
             context,
-          ).textTheme.bodyMedium?.copyWith(color: AppPalette.muted),
+          ).textTheme.bodyMedium?.copyWith(
+            color: AppPalette.muted,
+            fontSize: 14,
+          ),
         ),
       ],
     );

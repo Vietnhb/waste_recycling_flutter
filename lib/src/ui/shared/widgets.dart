@@ -102,73 +102,72 @@ Widget remoteImage(String? url, {double height = 150}) {
   );
 }
 
-Color statusColor(String status) {
-  switch (status) {
-    case 'PENDING':
-      return Colors.orange.shade700;
-    case 'ACCEPTED':
-      return Colors.blueGrey;
-    case 'ASSIGNED':
-      return Colors.blue;
-    case 'ON_THE_WAY':
-      return Colors.indigo;
-    case 'COLLECTED':
-    case 'RESOLVED':
-    case 'AVAILABLE':
-      return Colors.green;
-    case 'REJECTED':
-    case 'OFFLINE':
-      return Colors.red;
-    case 'BUSY':
-      return Colors.deepOrange;
-    default:
-      return Colors.grey;
-  }
-}
 
 String statusText(String status) {
-  switch (status) {
+  switch (status.toUpperCase()) {
     case 'PENDING':
-      return 'Chờ duyệt';
+      return 'Chờ xử lý';
     case 'ACCEPTED':
       return 'Đã tiếp nhận';
     case 'ASSIGNED':
-      return 'Đã gán xe';
-    case 'ON_THE_WAY':
-      return 'Xe đang đến';
+      return 'Đã phân công';
     case 'COLLECTED':
       return 'Đã thu gom';
-    case 'RESOLVED':
-      return 'Đã xử lý';
+    case 'REJECTED':
+      return 'Đã từ chối';
     case 'AVAILABLE':
       return 'Sẵn sàng';
+    case 'ACTIVE':
+      return 'Đang hoạt động';
+    case 'INACTIVE':
+      return 'Tạm dừng';
     case 'BUSY':
       return 'Đang bận';
     case 'OFFLINE':
       return 'Nghỉ';
-    case 'REJECTED':
-      return 'Từ chối';
     default:
       return status;
   }
 }
 
-IconData statusIcon(String status) {
-  switch (status) {
+Color statusColor(String status) {
+  switch (status.toUpperCase()) {
     case 'PENDING':
-      return Icons.schedule_rounded;
+      return AppPalette.amber;
     case 'ACCEPTED':
-      return Icons.inventory_2_rounded;
+      return AppPalette.primary;
+    case 'ASSIGNED':
+    case 'ACTIVE':
+    case 'AVAILABLE':
+      return AppPalette.mint;
+    case 'COLLECTED':
+      return AppPalette.primaryDark;
+    case 'BUSY':
+    case 'INACTIVE':
+      return Colors.orange;
+    case 'REJECTED':
+    case 'OFFLINE':
+      return Colors.red;
+    default:
+      return AppPalette.muted;
+  }
+}
+
+IconData statusIcon(String status) {
+  switch (status.toUpperCase()) {
+    case 'PENDING':
+      return Icons.hourglass_empty_rounded;
+    case 'ACCEPTED':
+      return Icons.thumb_up_alt_rounded;
     case 'ASSIGNED':
       return Icons.assignment_ind_rounded;
-    case 'ON_THE_WAY':
-      return Icons.local_shipping_rounded;
     case 'COLLECTED':
-    case 'RESOLVED':
       return Icons.check_circle_rounded;
     case 'AVAILABLE':
+    case 'ACTIVE':
       return Icons.play_circle_rounded;
     case 'BUSY':
+    case 'INACTIVE':
       return Icons.pause_circle_rounded;
     case 'OFFLINE':
     case 'REJECTED':
@@ -225,7 +224,7 @@ class SectionTitle extends StatelessWidget {
               ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
             ),
           ),
-          ?action,
+          if (action != null) action!,
         ],
       ),
     );
@@ -289,6 +288,16 @@ class ReportCard extends StatelessWidget {
   final WasteReport report;
   final Widget? trailing;
 
+  String _translateCategory(String name) {
+    switch (name.toUpperCase()) {
+      case 'ORGANIC': return 'Hữu cơ';
+      case 'RECYCLABLE': return 'Tái chế';
+      case 'HAZARDOUS': return 'Độc hại';
+      case 'OTHER': return 'Khác';
+      default: return name;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Card(
@@ -300,9 +309,14 @@ class ReportCard extends StatelessWidget {
           children: [
             Row(
               children: [
+                if ((report.priorityScore ?? 0) > 0)
+                  const Padding(
+                    padding: EdgeInsets.only(right: 6),
+                    child: Icon(Icons.star, color: Colors.orange, size: 20),
+                  ),
                 Expanded(
                   child: Text(
-                    '#${report.id} - ${report.categoryName}',
+                    '#${report.id} - ${_translateCategory(report.categoryName)}',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w800,
                       color: AppPalette.ink,
@@ -348,38 +362,63 @@ class ReportCard extends StatelessWidget {
 }
 
 class SummaryTile extends StatelessWidget {
-  const SummaryTile({super.key, required this.title, required this.value});
+  const SummaryTile({
+    super.key,
+    required this.title,
+    required this.value,
+    this.icon = Icons.analytics_rounded,
+  });
 
   final String title;
   final String value;
+  final IconData icon;
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      color: AppPalette.mint,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              title,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: AppPalette.muted,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              value,
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w900,
-                color: AppPalette.primaryDark,
-              ),
-            ),
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppPalette.primary.withValues(alpha: 0.1),
+            AppPalette.mint.withValues(alpha: 0.3),
           ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppPalette.mint.withValues(alpha: 0.5)),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: AppPalette.primaryDark, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: AppPalette.ink.withValues(alpha: 0.8),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.w900,
+              color: AppPalette.primaryDark,
+            ),
+          ),
+        ],
       ),
     );
   }

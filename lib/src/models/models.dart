@@ -125,6 +125,7 @@ class WasteReport {
     this.weight,
     this.isCorrectlyClassified,
     this.collectedImageUrl,
+    this.priorityScore,
   });
 
   final int id;
@@ -150,6 +151,7 @@ class WasteReport {
   final double? weight;
   final bool? isCorrectlyClassified;
   final String? collectedImageUrl;
+  final int? priorityScore;
 
   factory WasteReport.fromJson(JsonMap json) {
     return WasteReport(
@@ -178,6 +180,7 @@ class WasteReport {
           ? null
           : asBool(json['isCorrectlyClassified']),
       collectedImageUrl: json['collectedImageUrl']?.toString(),
+      priorityScore: json['priorityScore'] == null ? null : asInt(json['priorityScore']),
     );
   }
 }

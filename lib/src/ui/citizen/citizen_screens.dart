@@ -73,6 +73,7 @@ class _CitizenScreenState extends State<CitizenScreen>
         bottom: TabBar(
           controller: _tabController,
           isScrollable: true,
+          tabAlignment: TabAlignment.start,
           tabs: const [
             Tab(icon: Icon(Icons.add_location_alt), text: 'Báo rác'),
             Tab(icon: Icon(Icons.receipt_long), text: 'Báo cáo'),

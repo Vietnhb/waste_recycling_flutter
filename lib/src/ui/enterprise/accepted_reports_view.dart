@@ -61,13 +61,13 @@ class _AcceptedReportsViewState extends State<AcceptedReportsView> {
   Future<void> _assign(WasteReport report) async {
     final collectorId = _selectedCollector[report.id];
     if (collectorId == null) {
-      showSnack(context, 'Vui lòng chọn collector');
+      showSnack(context, 'Vui lòng chọn nhân viên');
       return;
     }
     try {
       await widget.controller.api.assignCollector(report.id, collectorId);
       if (!mounted) return;
-      showSnack(context, 'Đã gán collector');
+      showSnack(context, 'Đã phân công nhân viên');
       await _load();
     } catch (e) {
       if (!mounted) return;
@@ -103,11 +103,12 @@ class _AcceptedReportsViewState extends State<AcceptedReportsView> {
                 trailing = Column(
                   children: [
                     DropdownButtonFormField<int>(
+                      isExpanded: true,
                       initialValue: validDropdownValue(
                         _selectedCollector[report.id],
                         available.map((collector) => collector.id),
                       ),
-                      decoration: inputDecoration('Collector khả dụng'),
+                      decoration: inputDecoration('Nhân viên khả dụng'),
                       items: available
                           .map(
                             (collector) => DropdownMenuItem(
@@ -128,10 +129,22 @@ class _AcceptedReportsViewState extends State<AcceptedReportsView> {
                       }),
                     ),
                     const SizedBox(height: 8),
-                    FilledButton.icon(
-                      onPressed: () => _assign(report),
-                      icon: const Icon(Icons.person_add_alt),
-                      label: const Text('Gán collector'),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        style: FilledButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        onPressed: () => _assign(report),
+                        icon: const Icon(Icons.person_add_alt_1_rounded),
+                        label: const Text(
+                          'Phân công nhân viên',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ),
                     ),
                   ],
                 );

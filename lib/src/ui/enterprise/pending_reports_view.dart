@@ -123,6 +123,7 @@ class _PendingReportsViewState extends State<PendingReportsView> {
                 trailing: Column(
                   children: [
                     DropdownButtonFormField<int>(
+                      isExpanded: true,
                       initialValue: validDropdownValue(
                         _selectedRules[report.id],
                         rules.map((rule) => rule.id),
@@ -152,17 +153,39 @@ class _PendingReportsViewState extends State<PendingReportsView> {
                       children: [
                         Expanded(
                           child: FilledButton.icon(
+                            style: FilledButton.styleFrom(
+                              backgroundColor: AppPalette.mint,
+                              foregroundColor: AppPalette.primaryDark,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
                             onPressed: () => _accept(report),
-                            icon: const Icon(Icons.check),
-                            label: const Text('Tiếp nhận'),
+                            icon: const Icon(Icons.check_circle_rounded),
+                            label: const Text(
+                              'Tiếp nhận',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
                           ),
                         ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.red,
+                              side: BorderSide(color: Colors.red.withValues(alpha: 0.5)),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
                             onPressed: () => _reject(report),
-                            icon: const Icon(Icons.close),
-                            label: const Text('Từ chối'),
+                            icon: const Icon(Icons.cancel_rounded),
+                            label: const Text(
+                              'Từ chối',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
                           ),
                         ),
                       ],

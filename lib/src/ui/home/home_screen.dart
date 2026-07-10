@@ -93,7 +93,7 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             Icon(Icons.recycling_rounded, color: AppPalette.primary),
             SizedBox(width: 8),
-            Text('GreenLoop'),
+            Text('Tái Chế Xanh'),
           ],
         ),
         actions: [

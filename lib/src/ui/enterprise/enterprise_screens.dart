@@ -27,7 +27,7 @@ class EnterpriseScreen extends StatelessWidget {
       length: 6,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Recycling Enterprise'),
+          title: const Text('Không gian làm việc'),
           actions: [
             IconButton(
               tooltip: 'Đăng xuất',
@@ -37,12 +37,13 @@ class EnterpriseScreen extends StatelessWidget {
           ],
           bottom: const TabBar(
             isScrollable: true,
+            tabAlignment: TabAlignment.start,
             tabs: [
-              Tab(icon: Icon(Icons.apartment), text: 'Hồ sơ'),
+              Tab(icon: Icon(Icons.apartment), text: 'Công ty'),
               Tab(icon: Icon(Icons.inbox), text: 'Mới'),
               Tab(icon: Icon(Icons.assignment_turned_in), text: 'Đã nhận'),
               Tab(icon: Icon(Icons.rule), text: 'Điểm'),
-              Tab(icon: Icon(Icons.groups), text: 'Collector'),
+              Tab(icon: Icon(Icons.groups), text: 'Nhân viên'),
               Tab(icon: Icon(Icons.analytics), text: 'Thống kê'),
             ],
           ),

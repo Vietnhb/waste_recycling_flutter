@@ -179,30 +179,50 @@ class _ProfileHeader extends StatelessWidget {
   final String role;
   final int points;
 
+  String _getRoleName(String role) {
+    switch (role) {
+      case 'ADMIN': return 'Quản trị viên';
+      case 'ENTERPRISE': return 'Doanh nghiệp';
+      case 'COLLECTOR': return 'Nhân viên thu gom';
+      default: return 'Công dân';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: AppPalette.primaryDark,
-        borderRadius: BorderRadius.circular(8),
+        gradient: const LinearGradient(
+          colors: [AppPalette.primaryDark, AppPalette.primary],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: AppPalette.primary.withValues(alpha: 0.3),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Row(
         children: [
           Container(
-            width: 64,
-            height: 64,
+            width: 72,
+            height: 72,
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(8),
+              color: Colors.white.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(16),
             ),
             child: const Icon(
               Icons.account_circle_outlined,
               color: Colors.white,
-              size: 42,
+              size: 48,
             ),
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -221,15 +241,16 @@ class _ProfileHeader extends StatelessWidget {
                   email,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: Colors.white.withValues(alpha: 0.78)),
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.9)),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 12),
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
                   children: [
-                    _HeaderPill(text: role),
-                    _HeaderPill(text: '$points điểm'),
+                    _HeaderPill(text: _getRoleName(role).toUpperCase()),
+                    if (role == 'CITIZEN')
+                      _HeaderPill(text: '$points điểm'),
                   ],
                 ),
               ],

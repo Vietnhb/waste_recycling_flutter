@@ -208,14 +208,20 @@ class _EnterpriseStatisticsViewState extends State<EnterpriseStatisticsView> {
             mainAxisSpacing: 8,
             crossAxisSpacing: 8,
             children: [
-              SummaryTile(title: 'Tổng báo cáo', value: '$totalReports'),
+              SummaryTile(
+                title: 'Tổng báo cáo', 
+                value: '$totalReports', 
+                icon: Icons.receipt_long_rounded
+              ),
               SummaryTile(
                 title: 'Tổng khối lượng',
                 value: '${totalWeight.toStringAsFixed(1)} kg',
+                icon: Icons.scale_rounded,
               ),
               SummaryTile(
                 title: 'Độ chính xác',
                 value: '${accuracy.toStringAsFixed(1)}%',
+                icon: Icons.track_changes_rounded,
               ),
             ],
           ),

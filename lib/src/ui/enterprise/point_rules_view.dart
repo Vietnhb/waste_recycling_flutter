@@ -85,19 +85,16 @@ class _PointRulesViewState extends State<PointRulesView> {
 
   Future<void> _save() async {
     if (_nameCtrl.text.trim().isEmpty) {
-      showSnack(context, 'Vui lòng nhập tên rule');
+      showSnack(context, 'Vui lòng nhập tên quy tắc');
       return;
     }
     final data = {
       'ruleName': _nameCtrl.text.trim(),
       'description': _descCtrl.text.trim(),
       'basePoints': asInt(_baseCtrl.text),
-      'pointsPerKg': _perKgCtrl.text.trim().isEmpty
-          ? null
-          : asDouble(_perKgCtrl.text),
-      'correctClassificationBonus': _bonusCtrl.text.trim().isEmpty
-          ? null
-          : asInt(_bonusCtrl.text),
+      'pointsPerKg': _perKgCtrl.text.trim().isEmpty ? null : asDouble(_perKgCtrl.text),
+      'correctClassificationBonus':
+          _bonusCtrl.text.trim().isEmpty ? null : asInt(_bonusCtrl.text),
       'categoryIds': _categoryIds.toList(),
     };
     try {
@@ -107,7 +104,7 @@ class _PointRulesViewState extends State<PointRulesView> {
         await widget.controller.api.updatePointRule(_editingId!, data);
       }
       if (!mounted) return;
-      showSnack(context, 'Đã lưu rule');
+      showSnack(context, 'Đã lưu quy tắc');
       _reset();
       await _load();
     } catch (e) {
@@ -127,7 +124,7 @@ class _PointRulesViewState extends State<PointRulesView> {
   }
 
   Future<void> _delete(PointRule rule) async {
-    final ok = await confirmDialog(context, 'Xóa rule ${rule.ruleName}?');
+    final ok = await confirmDialog(context, 'Xóa quy tắc ${rule.ruleName}?');
     if (!ok) return;
     try {
       await widget.controller.api.deletePointRule(rule.id);
@@ -136,6 +133,26 @@ class _PointRulesViewState extends State<PointRulesView> {
       if (!mounted) return;
       showSnack(context, e.toString());
     }
+  }
+
+  String _translate(String name) {
+    switch (name.toUpperCase()) {
+      case 'ORGANIC':
+        return 'Hữu cơ';
+      case 'RECYCLABLE':
+        return 'Tái chế';
+      case 'HAZARDOUS':
+        return 'Độc hại';
+      case 'OTHER':
+        return 'Khác';
+      default:
+        return name;
+    }
+  }
+
+  String _formatCategories(String rawNames) {
+    if (rawNames.isEmpty) return 'Tất cả loại rác';
+    return rawNames.split(', ').map((e) => _translate(e.trim())).join(', ');
   }
 
   @override
@@ -150,79 +167,119 @@ class _PointRulesViewState extends State<PointRulesView> {
             _editingId == null ? 'Tạo quy tắc điểm' : 'Sửa quy tắc điểm',
           ),
           Card(
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
+            ),
             child: Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(20),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   TextField(
                     controller: _nameCtrl,
-                    decoration: inputDecoration('Tên rule', icon: Icons.rule),
+                    decoration: inputDecoration('Tên quy tắc', icon: Icons.rule),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 12),
                   TextField(
                     controller: _descCtrl,
                     minLines: 2,
                     maxLines: 3,
                     decoration: inputDecoration('Mô tả'),
                   ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Áp dụng cho loại rác:',
+                    style: TextStyle(fontWeight: FontWeight.w600, color: AppPalette.ink),
+                  ),
                   const SizedBox(height: 8),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Wrap(
-                      spacing: 8,
-                      runSpacing: 4,
-                      children: _categories
-                          .map(
-                            (category) => FilterChip(
-                              label: Text(category.name),
-                              selected: _categoryIds.contains(category.id),
-                              onSelected: (selected) => setState(() {
-                                if (selected) {
-                                  _categoryIds.add(category.id);
-                                } else {
-                                  _categoryIds.remove(category.id);
-                                }
-                              }),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: _categories
+                        .map(
+                          (category) => FilterChip(
+                            label: Text(_translate(category.name)),
+                            selected: _categoryIds.contains(category.id),
+                            selectedColor: AppPalette.primary.withValues(alpha: 0.2),
+                            checkmarkColor: AppPalette.primaryDark,
+                            labelStyle: TextStyle(
+                              color: _categoryIds.contains(category.id)
+                                  ? AppPalette.primaryDark
+                                  : AppPalette.ink,
+                              fontWeight: _categoryIds.contains(category.id)
+                                  ? FontWeight.w700
+                                  : FontWeight.normal,
                             ),
-                          )
-                          .toList(),
-                    ),
+                            onSelected: (selected) => setState(() {
+                              if (selected) {
+                                _categoryIds.add(category.id);
+                              } else {
+                                _categoryIds.remove(category.id);
+                              }
+                            }),
+                          ),
+                        )
+                        .toList(),
                   ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _baseCtrl,
-                    keyboardType: TextInputType.number,
-                    decoration: inputDecoration('Điểm cơ bản'),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _baseCtrl,
+                          keyboardType: TextInputType.number,
+                          decoration: inputDecoration('Điểm cơ bản'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: _perKgCtrl,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: inputDecoration('Điểm / kg'),
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _perKgCtrl,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    decoration: inputDecoration('Điểm/kg'),
-                  ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 12),
                   TextField(
                     controller: _bonusCtrl,
                     keyboardType: TextInputType.number,
-                    decoration: inputDecoration('Bonus phân loại đúng'),
+                    decoration: inputDecoration('Thưởng phân loại đúng (Bonus)'),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 20),
                   Row(
                     children: [
                       Expanded(
                         child: FilledButton.icon(
+                          style: FilledButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
                           onPressed: _save,
-                          icon: const Icon(Icons.save),
+                          icon: const Icon(Icons.save_rounded),
                           label: Text(
-                            _editingId == null ? 'Tạo rule' : 'Cập nhật',
+                            _editingId == null ? 'Tạo quy tắc' : 'Cập nhật',
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                           ),
                         ),
                       ),
                       if (_editingId != null) ...[
-                        const SizedBox(width: 8),
-                        TextButton(onPressed: _reset, child: const Text('Hủy')),
+                        const SizedBox(width: 12),
+                        OutlinedButton(
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 24),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          onPressed: _reset,
+                          child: const Text('Hủy'),
+                        ),
                       ],
                     ],
                   ),
@@ -230,48 +287,123 @@ class _PointRulesViewState extends State<PointRulesView> {
               ),
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 24),
           SectionTitle(
-            'Danh sách rule',
+            'Danh sách quy tắc',
             action: IconButton(
               tooltip: 'Tải lại',
               onPressed: _load,
-              icon: const Icon(Icons.refresh),
+              icon: const Icon(Icons.refresh_rounded),
             ),
           ),
           if (_rules.isEmpty)
-            const EmptyState('Chưa có rule nào')
+            const EmptyState('Chưa có quy tắc nào')
           else
             ..._rules.map(
               (rule) => Card(
-                child: ListTile(
-                  title: Text(rule.ruleName),
-                  subtitle: Text(
-                    '${rule.categoryNames.isEmpty ? 'Tất cả loại rác' : rule.categoryNames}\n'
-                    '${rule.basePoints} điểm + ${rule.pointsPerKg ?? 0}/kg, '
-                    'bonus ${rule.correctClassificationBonus ?? 0}',
-                  ),
-                  isThreeLine: true,
-                  leading: StatusChip(rule.isActive ? 'ACTIVE' : 'INACTIVE'),
-                  trailing: Wrap(
-                    spacing: 4,
+                elevation: 0,
+                margin: const EdgeInsets.only(bottom: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      IconButton(
-                        tooltip: 'Sửa',
-                        onPressed: () => _edit(rule),
-                        icon: const Icon(Icons.edit),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  rule.ruleName,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 16,
+                                    color: AppPalette.ink,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  rule.description,
+                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    color: AppPalette.muted,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          StatusChip(rule.isActive ? 'ACTIVE' : 'INACTIVE'),
+                        ],
                       ),
-                      IconButton(
-                        tooltip: rule.isActive ? 'Tắt' : 'Bật',
-                        onPressed: () => _toggle(rule),
-                        icon: Icon(
-                          rule.isActive ? Icons.pause : Icons.play_arrow,
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(Icons.category_rounded, size: 16, color: AppPalette.primary),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    _formatCategories(rule.categoryNames),
+                                    style: const TextStyle(fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                const Icon(Icons.stars_rounded, size: 16, color: AppPalette.amber),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    '${rule.basePoints} điểm cơ bản • ${rule.pointsPerKg ?? 0}/kg • Thưởng thêm ${rule.correctClassificationBonus ?? 0}',
+                                    style: const TextStyle(color: AppPalette.ink),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
                       ),
-                      IconButton(
-                        tooltip: 'Xóa',
-                        onPressed: () => _delete(rule),
-                        icon: const Icon(Icons.delete),
+                      const SizedBox(height: 12),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton.icon(
+                            onPressed: () => _toggle(rule),
+                            icon: Icon(rule.isActive ? Icons.pause_rounded : Icons.play_arrow_rounded),
+                            label: Text(rule.isActive ? 'Tạm dừng' : 'Kích hoạt'),
+                            style: TextButton.styleFrom(foregroundColor: AppPalette.primaryDark),
+                          ),
+                          const SizedBox(width: 8),
+                          TextButton.icon(
+                            onPressed: () => _edit(rule),
+                            icon: const Icon(Icons.edit_rounded),
+                            label: const Text('Sửa'),
+                            style: TextButton.styleFrom(foregroundColor: AppPalette.primaryDark),
+                          ),
+                          const SizedBox(width: 8),
+                          TextButton.icon(
+                            onPressed: () => _delete(rule),
+                            icon: const Icon(Icons.delete_rounded),
+                            label: const Text('Xóa'),
+                            style: TextButton.styleFrom(foregroundColor: Colors.red),
+                          ),
+                        ],
                       ),
                     ],
                   ),
