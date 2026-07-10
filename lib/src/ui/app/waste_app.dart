@@ -23,7 +23,6 @@ class WasteApp extends StatelessWidget {
               brightness: Brightness.light,
             ),
             useMaterial3: true,
-            fontFamily: 'Roboto',
             scaffoldBackgroundColor: AppPalette.canvas,
             appBarTheme: const AppBarTheme(
               elevation: 0,
