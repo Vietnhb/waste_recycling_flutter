@@ -27,7 +27,7 @@ class _AdminUsersViewState extends State<AdminUsersView> {
       setState(() => _users = users);
     } catch (e) {
       if (!mounted) return;
-      showSnack(context, e.toString());
+      showErrorSnack(context, e);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -48,7 +48,7 @@ class _AdminUsersViewState extends State<AdminUsersView> {
       await _load();
     } catch (e) {
       if (!mounted) return;
-      showSnack(context, e.toString());
+      showErrorSnack(context, e);
     }
   }
 
@@ -60,7 +60,7 @@ class _AdminUsersViewState extends State<AdminUsersView> {
       await _load();
     } catch (e) {
       if (!mounted) return;
-      showSnack(context, e.toString());
+      showErrorSnack(context, e);
     }
   }
 

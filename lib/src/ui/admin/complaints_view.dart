@@ -38,7 +38,7 @@ class _AdminComplaintsViewState extends State<AdminComplaintsView> {
       setState(() => _complaints = complaints);
     } catch (e) {
       if (!mounted) return;
-      showSnack(context, e.toString());
+      showErrorSnack(context, e);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -59,7 +59,7 @@ class _AdminComplaintsViewState extends State<AdminComplaintsView> {
       await _load();
     } catch (e) {
       if (!mounted) return;
-      showSnack(context, e.toString());
+      showErrorSnack(context, e);
     }
   }
 
