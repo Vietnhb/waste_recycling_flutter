@@ -39,7 +39,7 @@ class _CollectorManagementViewState extends State<CollectorManagementView> {
       setState(() => _collectors = collectors);
     } catch (e) {
       if (!mounted) return;
-      showSnack(context, e.toString());
+      showErrorSnack(context, e);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -66,7 +66,7 @@ class _CollectorManagementViewState extends State<CollectorManagementView> {
       await _load();
     } catch (e) {
       if (!mounted) return;
-      showSnack(context, e.toString());
+      showErrorSnack(context, e);
     }
   }
 
@@ -78,7 +78,7 @@ class _CollectorManagementViewState extends State<CollectorManagementView> {
       await _load();
     } catch (e) {
       if (!mounted) return;
-      showSnack(context, e.toString());
+      showErrorSnack(context, e);
     }
   }
 
@@ -88,12 +88,12 @@ class _CollectorManagementViewState extends State<CollectorManagementView> {
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppSpacing.cardPadding),
         children: [
           const SectionTitle('Tạo collector'),
           Card(
             child: Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(AppSpacing.cardPadding),
               child: Column(
                 children: [
                   TextField(
@@ -101,18 +101,18 @@ class _CollectorManagementViewState extends State<CollectorManagementView> {
                     keyboardType: TextInputType.emailAddress,
                     decoration: inputDecoration('Email', icon: Icons.email),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: AppSpacing.formGap),
                   TextField(
                     controller: _nameCtrl,
                     decoration: inputDecoration('Họ tên', icon: Icons.person),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: AppSpacing.formGap),
                   TextField(
                     controller: _passwordCtrl,
                     obscureText: true,
                     decoration: inputDecoration('Mật khẩu', icon: Icons.lock),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: AppSpacing.formGap),
                   FilledButton.icon(
                     onPressed: _create,
                     icon: const Icon(Icons.person_add),

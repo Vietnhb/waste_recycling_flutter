@@ -51,7 +51,7 @@ class _PointRulesViewState extends State<PointRulesView> {
       });
     } catch (e) {
       if (!mounted) return;
-      showSnack(context, e.toString());
+      showErrorSnack(context, e);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -112,7 +112,7 @@ class _PointRulesViewState extends State<PointRulesView> {
       await _load();
     } catch (e) {
       if (!mounted) return;
-      showSnack(context, e.toString());
+      showErrorSnack(context, e);
     }
   }
 
@@ -122,7 +122,7 @@ class _PointRulesViewState extends State<PointRulesView> {
       await _load();
     } catch (e) {
       if (!mounted) return;
-      showSnack(context, e.toString());
+      showErrorSnack(context, e);
     }
   }
 
@@ -134,7 +134,7 @@ class _PointRulesViewState extends State<PointRulesView> {
       await _load();
     } catch (e) {
       if (!mounted) return;
-      showSnack(context, e.toString());
+      showErrorSnack(context, e);
     }
   }
 
@@ -144,28 +144,28 @@ class _PointRulesViewState extends State<PointRulesView> {
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppSpacing.cardPadding),
         children: [
           SectionTitle(
             _editingId == null ? 'Tạo quy tắc điểm' : 'Sửa quy tắc điểm',
           ),
           Card(
             child: Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(AppSpacing.cardPadding),
               child: Column(
                 children: [
                   TextField(
                     controller: _nameCtrl,
                     decoration: inputDecoration('Tên rule', icon: Icons.rule),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: AppSpacing.formGap),
                   TextField(
                     controller: _descCtrl,
                     minLines: 2,
                     maxLines: 3,
                     decoration: inputDecoration('Mô tả'),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: AppSpacing.formGap),
                   Align(
                     alignment: Alignment.centerLeft,
                     child: Wrap(
@@ -188,13 +188,13 @@ class _PointRulesViewState extends State<PointRulesView> {
                           .toList(),
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: AppSpacing.formGap),
                   TextField(
                     controller: _baseCtrl,
                     keyboardType: TextInputType.number,
                     decoration: inputDecoration('Điểm cơ bản'),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: AppSpacing.formGap),
                   TextField(
                     controller: _perKgCtrl,
                     keyboardType: const TextInputType.numberWithOptions(
@@ -202,13 +202,13 @@ class _PointRulesViewState extends State<PointRulesView> {
                     ),
                     decoration: inputDecoration('Điểm/kg'),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: AppSpacing.formGap),
                   TextField(
                     controller: _bonusCtrl,
                     keyboardType: TextInputType.number,
                     decoration: inputDecoration('Bonus phân loại đúng'),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: AppSpacing.formGap),
                   Row(
                     children: [
                       Expanded(

@@ -42,7 +42,7 @@ class _EnterpriseStatisticsViewState extends State<EnterpriseStatisticsView> {
       await _search();
     } catch (e) {
       if (!mounted) return;
-      showSnack(context, e.toString());
+      showErrorSnack(context, e);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -61,7 +61,7 @@ class _EnterpriseStatisticsViewState extends State<EnterpriseStatisticsView> {
       setState(() => _stats = stats);
     } catch (e) {
       if (!mounted) return;
-      showSnack(context, e.toString());
+      showErrorSnack(context, e);
     }
   }
 
