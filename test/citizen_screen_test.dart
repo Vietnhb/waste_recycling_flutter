@@ -19,11 +19,11 @@ void main() {
     await tester.pumpWidget(WasteApp(controller: controller));
     await tester.pump(const Duration(milliseconds: 500));
 
-    expect(find.text('CITIZEN'), findsOneWidget);
-    expect(find.text('Mở workspace'), findsOneWidget);
+    expect(find.text('CÔNG DÂN'), findsOneWidget);
+    expect(find.text('Không gian'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
-    await tester.tap(find.text('Mở workspace'));
+    await tester.tap(find.text('Không gian'));
     await tester.pumpAndSettle();
 
     expect(find.text('Báo cáo'), findsOneWidget);

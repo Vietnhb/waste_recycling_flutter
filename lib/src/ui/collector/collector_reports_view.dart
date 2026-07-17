@@ -47,7 +47,7 @@ class _CollectorReportsViewState extends State<CollectorReportsView> {
       });
     } catch (e) {
       if (!mounted) return;
-      showSnack(context, e.toString());
+      showErrorSnack(context, e);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -59,7 +59,7 @@ class _CollectorReportsViewState extends State<CollectorReportsView> {
       await _load();
     } catch (e) {
       if (!mounted) return;
-      showSnack(context, e.toString());
+      showErrorSnack(context, e);
     }
   }
 
@@ -690,7 +690,7 @@ class _CollectorNavigationScreenState
 
   void _fitRoute() {
     final points = [
-      if (_currentPoint != null) _currentPoint!,
+      ?_currentPoint,
       ..._route,
       LatLng(widget.report.latitude, widget.report.longitude),
     ];

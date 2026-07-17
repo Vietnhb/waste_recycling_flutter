@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+
 
 import '../../controllers/app_controller.dart';
 import '../shared/widgets.dart';
@@ -32,7 +34,7 @@ class _LoginScreenState extends State<LoginScreen> {
       Navigator.pop(context);
     } catch (e) {
       if (!mounted) return;
-      showSnack(context, e.toString());
+      showErrorSnack(context, e);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -81,6 +83,56 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
             child: const Text('Tạo tài khoản Citizen'),
           ),
+          if (kDebugMode) ...[
+            const SizedBox(height: 24),
+            const Divider(),
+            const SizedBox(height: 12),
+            const Text(
+              '🛠 DEV TOOLS (Bỏ qua đăng nhập)',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: AppPalette.muted,
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.center,
+              children: [
+                FilledButton.tonal(
+                  onPressed: () {
+                    widget.controller.devLogin('ADMIN');
+                    Navigator.pop(context);
+                  },
+                  child: const Text('Admin'),
+                ),
+                FilledButton.tonal(
+                  onPressed: () {
+                    widget.controller.devLogin('CITIZEN');
+                    Navigator.pop(context);
+                  },
+                  child: const Text('Citizen'),
+                ),
+                FilledButton.tonal(
+                  onPressed: () {
+                    widget.controller.devLogin('ENTERPRISE');
+                    Navigator.pop(context);
+                  },
+                  child: const Text('Enterprise'),
+                ),
+                FilledButton.tonal(
+                  onPressed: () {
+                    widget.controller.devLogin('COLLECTOR');
+                    Navigator.pop(context);
+                  },
+                  child: const Text('Collector'),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -128,7 +180,7 @@ class _SignupScreenState extends State<SignupScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      showSnack(context, e.toString());
+      showErrorSnack(context, e);
     } finally {
       if (mounted) setState(() => _loading = false);
     }

@@ -39,7 +39,7 @@ class _RankingViewState extends State<RankingView> {
       await _loadRanking();
     } catch (e) {
       if (!mounted) return;
-      showSnack(context, e.toString());
+      showErrorSnack(context, e);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -58,7 +58,7 @@ class _RankingViewState extends State<RankingView> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _ranking = const []);
-      showSnack(context, e.toString());
+      showErrorSnack(context, e);
     }
   }
 

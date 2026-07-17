@@ -51,7 +51,7 @@ class _PointRulesViewState extends State<PointRulesView> {
       });
     } catch (e) {
       if (!mounted) return;
-      showSnack(context, e.toString());
+      showErrorSnack(context, e);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -92,9 +92,12 @@ class _PointRulesViewState extends State<PointRulesView> {
       'ruleName': _nameCtrl.text.trim(),
       'description': _descCtrl.text.trim(),
       'basePoints': asInt(_baseCtrl.text),
-      'pointsPerKg': _perKgCtrl.text.trim().isEmpty ? null : asDouble(_perKgCtrl.text),
-      'correctClassificationBonus':
-          _bonusCtrl.text.trim().isEmpty ? null : asInt(_bonusCtrl.text),
+      'pointsPerKg': _perKgCtrl.text.trim().isEmpty
+          ? null
+          : asDouble(_perKgCtrl.text),
+      'correctClassificationBonus': _bonusCtrl.text.trim().isEmpty
+          ? null
+          : asInt(_bonusCtrl.text),
       'categoryIds': _categoryIds.toList(),
     };
     try {
@@ -109,7 +112,7 @@ class _PointRulesViewState extends State<PointRulesView> {
       await _load();
     } catch (e) {
       if (!mounted) return;
-      showSnack(context, e.toString());
+      showErrorSnack(context, e);
     }
   }
 
@@ -119,7 +122,7 @@ class _PointRulesViewState extends State<PointRulesView> {
       await _load();
     } catch (e) {
       if (!mounted) return;
-      showSnack(context, e.toString());
+      showErrorSnack(context, e);
     }
   }
 
@@ -131,7 +134,7 @@ class _PointRulesViewState extends State<PointRulesView> {
       await _load();
     } catch (e) {
       if (!mounted) return;
-      showSnack(context, e.toString());
+      showErrorSnack(context, e);
     }
   }
 
@@ -179,7 +182,10 @@ class _PointRulesViewState extends State<PointRulesView> {
                 children: [
                   TextField(
                     controller: _nameCtrl,
-                    decoration: inputDecoration('Tên quy tắc', icon: Icons.rule),
+                    decoration: inputDecoration(
+                      'Tên quy tắc',
+                      icon: Icons.rule,
+                    ),
                   ),
                   const SizedBox(height: 12),
                   TextField(
@@ -191,7 +197,10 @@ class _PointRulesViewState extends State<PointRulesView> {
                   const SizedBox(height: 16),
                   const Text(
                     'Áp dụng cho loại rác:',
-                    style: TextStyle(fontWeight: FontWeight.w600, color: AppPalette.ink),
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: AppPalette.ink,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Wrap(
@@ -202,7 +211,9 @@ class _PointRulesViewState extends State<PointRulesView> {
                           (category) => FilterChip(
                             label: Text(_translate(category.name)),
                             selected: _categoryIds.contains(category.id),
-                            selectedColor: AppPalette.primary.withValues(alpha: 0.2),
+                            selectedColor: AppPalette.primary.withValues(
+                              alpha: 0.2,
+                            ),
                             checkmarkColor: AppPalette.primaryDark,
                             labelStyle: TextStyle(
                               color: _categoryIds.contains(category.id)
@@ -237,7 +248,9 @@ class _PointRulesViewState extends State<PointRulesView> {
                       Expanded(
                         child: TextField(
                           controller: _perKgCtrl,
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
                           decoration: inputDecoration('Điểm / kg'),
                         ),
                       ),
@@ -247,7 +260,9 @@ class _PointRulesViewState extends State<PointRulesView> {
                   TextField(
                     controller: _bonusCtrl,
                     keyboardType: TextInputType.number,
-                    decoration: inputDecoration('Thưởng phân loại đúng (Bonus)'),
+                    decoration: inputDecoration(
+                      'Thưởng phân loại đúng (Bonus)',
+                    ),
                   ),
                   const SizedBox(height: 20),
                   Row(
@@ -264,7 +279,10 @@ class _PointRulesViewState extends State<PointRulesView> {
                           icon: const Icon(Icons.save_rounded),
                           label: Text(
                             _editingId == null ? 'Tạo quy tắc' : 'Cập nhật',
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
                           ),
                         ),
                       ),
@@ -272,7 +290,10 @@ class _PointRulesViewState extends State<PointRulesView> {
                         const SizedBox(width: 12),
                         OutlinedButton(
                           style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 24),
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 14,
+                              horizontal: 24,
+                            ),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(10),
                             ),
@@ -330,9 +351,8 @@ class _PointRulesViewState extends State<PointRulesView> {
                                 const SizedBox(height: 4),
                                 Text(
                                   rule.description,
-                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                    color: AppPalette.muted,
-                                  ),
+                                  style: Theme.of(context).textTheme.bodyMedium
+                                      ?.copyWith(color: AppPalette.muted),
                                 ),
                               ],
                             ),
@@ -353,12 +373,18 @@ class _PointRulesViewState extends State<PointRulesView> {
                           children: [
                             Row(
                               children: [
-                                const Icon(Icons.category_rounded, size: 16, color: AppPalette.primary),
+                                const Icon(
+                                  Icons.category_rounded,
+                                  size: 16,
+                                  color: AppPalette.primary,
+                                ),
                                 const SizedBox(width: 8),
                                 Expanded(
                                   child: Text(
                                     _formatCategories(rule.categoryNames),
-                                    style: const TextStyle(fontWeight: FontWeight.bold),
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
                                 ),
                               ],
@@ -366,12 +392,18 @@ class _PointRulesViewState extends State<PointRulesView> {
                             const SizedBox(height: 8),
                             Row(
                               children: [
-                                const Icon(Icons.stars_rounded, size: 16, color: AppPalette.amber),
+                                const Icon(
+                                  Icons.stars_rounded,
+                                  size: 16,
+                                  color: AppPalette.amber,
+                                ),
                                 const SizedBox(width: 8),
                                 Expanded(
                                   child: Text(
                                     '${rule.basePoints} điểm cơ bản • ${rule.pointsPerKg ?? 0}/kg • Thưởng thêm ${rule.correctClassificationBonus ?? 0}',
-                                    style: const TextStyle(color: AppPalette.ink),
+                                    style: const TextStyle(
+                                      color: AppPalette.ink,
+                                    ),
                                   ),
                                 ),
                               ],
@@ -385,23 +417,35 @@ class _PointRulesViewState extends State<PointRulesView> {
                         children: [
                           TextButton.icon(
                             onPressed: () => _toggle(rule),
-                            icon: Icon(rule.isActive ? Icons.pause_rounded : Icons.play_arrow_rounded),
-                            label: Text(rule.isActive ? 'Tạm dừng' : 'Kích hoạt'),
-                            style: TextButton.styleFrom(foregroundColor: AppPalette.primaryDark),
+                            icon: Icon(
+                              rule.isActive
+                                  ? Icons.pause_rounded
+                                  : Icons.play_arrow_rounded,
+                            ),
+                            label: Text(
+                              rule.isActive ? 'Tạm dừng' : 'Kích hoạt',
+                            ),
+                            style: TextButton.styleFrom(
+                              foregroundColor: AppPalette.primaryDark,
+                            ),
                           ),
                           const SizedBox(width: 8),
                           TextButton.icon(
                             onPressed: () => _edit(rule),
                             icon: const Icon(Icons.edit_rounded),
                             label: const Text('Sửa'),
-                            style: TextButton.styleFrom(foregroundColor: AppPalette.primaryDark),
+                            style: TextButton.styleFrom(
+                              foregroundColor: AppPalette.primaryDark,
+                            ),
                           ),
                           const SizedBox(width: 8),
                           TextButton.icon(
                             onPressed: () => _delete(rule),
                             icon: const Icon(Icons.delete_rounded),
                             label: const Text('Xóa'),
-                            style: TextButton.styleFrom(foregroundColor: Colors.red),
+                            style: TextButton.styleFrom(
+                              foregroundColor: Colors.red,
+                            ),
                           ),
                         ],
                       ),

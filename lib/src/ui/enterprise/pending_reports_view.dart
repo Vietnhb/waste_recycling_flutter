@@ -52,7 +52,7 @@ class _PendingReportsViewState extends State<PendingReportsView> {
       });
     } catch (e) {
       if (!mounted) return;
-      showSnack(context, e.toString());
+      showErrorSnack(context, e);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -81,7 +81,7 @@ class _PendingReportsViewState extends State<PendingReportsView> {
       await _load();
     } catch (e) {
       if (!mounted) return;
-      showSnack(context, e.toString());
+      showErrorSnack(context, e);
     }
   }
 
@@ -93,7 +93,7 @@ class _PendingReportsViewState extends State<PendingReportsView> {
       await _load();
     } catch (e) {
       if (!mounted) return;
-      showSnack(context, e.toString());
+      showErrorSnack(context, e);
     }
   }
 

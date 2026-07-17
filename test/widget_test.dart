@@ -8,7 +8,7 @@ void main() {
 
     await tester.pumpWidget(WasteApp(controller: controller));
 
-    expect(find.text('GreenLoop'), findsOneWidget);
+    expect(find.text('Tái Chế Xanh'), findsOneWidget);
     expect(find.text('Waste recycling network'), findsOneWidget);
   });
 }

@@ -16,49 +16,134 @@ part 'enterprise_statistics_view.dart';
 part 'pending_reports_view.dart';
 part 'point_rules_view.dart';
 
-class EnterpriseScreen extends StatelessWidget {
+class EnterpriseScreen extends StatefulWidget {
   const EnterpriseScreen({super.key, required this.controller});
 
   final AppController controller;
 
   @override
+  State<EnterpriseScreen> createState() => _EnterpriseScreenState();
+}
+
+class _EnterpriseScreenState extends State<EnterpriseScreen>
+    with SingleTickerProviderStateMixin {
+  int _selectedIndex = 0;
+  late final TabController _tabController;
+
+  static const _destinations = [
+    (icon: Icons.apartment, selectedIcon: Icons.apartment, label: 'Hồ sơ'),
+    (icon: Icons.inbox_outlined, selectedIcon: Icons.inbox, label: 'Mới'),
+    (
+      icon: Icons.assignment_turned_in_outlined,
+      selectedIcon: Icons.assignment_turned_in,
+      label: 'Đã nhận',
+    ),
+    (icon: Icons.rule_outlined, selectedIcon: Icons.rule, label: 'Điểm'),
+    (
+      icon: Icons.groups_outlined,
+      selectedIcon: Icons.groups,
+      label: 'Collector',
+    ),
+    (
+      icon: Icons.analytics_outlined,
+      selectedIcon: Icons.analytics,
+      label: 'Thống kê',
+    ),
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: _destinations.length, vsync: this);
+    _tabController.addListener(() {
+      if (!_tabController.indexIsChanging &&
+          _selectedIndex != _tabController.index) {
+        setState(() => _selectedIndex = _tabController.index);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  void _selectPage(int index) {
+    setState(() => _selectedIndex = index);
+    if (_tabController.index != index) {
+      _tabController.animateTo(index);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 6,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Không gian làm việc'),
-          actions: [
-            IconButton(
-              tooltip: 'Đăng xuất',
-              onPressed: () => logoutToHome(context, controller.logout),
-              icon: const Icon(Icons.logout_rounded),
-            ),
-          ],
-          bottom: const TabBar(
-            isScrollable: true,
-            tabAlignment: TabAlignment.start,
-            tabs: [
-              Tab(icon: Icon(Icons.apartment), text: 'Công ty'),
-              Tab(icon: Icon(Icons.inbox), text: 'Mới'),
-              Tab(icon: Icon(Icons.assignment_turned_in), text: 'Đã nhận'),
-              Tab(icon: Icon(Icons.rule), text: 'Điểm'),
-              Tab(icon: Icon(Icons.groups), text: 'Nhân viên'),
-              Tab(icon: Icon(Icons.analytics), text: 'Thống kê'),
-            ],
+    final pages = [
+      EnterpriseProfileView(controller: widget.controller),
+      PendingReportsView(controller: widget.controller),
+      AcceptedReportsView(controller: widget.controller),
+      PointRulesView(controller: widget.controller),
+      CollectorManagementView(controller: widget.controller),
+      EnterpriseStatisticsView(controller: widget.controller),
+    ];
+
+    final isWide = MediaQuery.sizeOf(context).width > 800;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Recycling Enterprise'),
+        actions: [
+          IconButton(
+            tooltip: 'Đăng xuất',
+            onPressed: () => logoutToHome(context, widget.controller.logout),
+            icon: const Icon(Icons.logout_rounded),
           ),
-        ),
-        body: TabBarView(
-          children: [
-            EnterpriseProfileView(controller: controller),
-            PendingReportsView(controller: controller),
-            AcceptedReportsView(controller: controller),
-            PointRulesView(controller: controller),
-            CollectorManagementView(controller: controller),
-            EnterpriseStatisticsView(controller: controller),
-          ],
-        ),
+        ],
+        // TabBar chỉ hiện trên mobile
+        bottom: isWide
+            ? null
+            : TabBar(
+                controller: _tabController,
+                isScrollable: true,
+                onTap: _selectPage,
+                tabs: [
+                  for (final d in _destinations)
+                    Tab(icon: Icon(d.icon), text: d.label),
+                ],
+              ),
       ),
+      body: isWide
+          // ── Desktop/Web: Sidebar NavigationRail ──
+          ? Row(
+              children: [
+                NavigationRail(
+                  selectedIndex: _selectedIndex,
+                  onDestinationSelected: _selectPage,
+                  labelType: NavigationRailLabelType.all,
+                  backgroundColor: Colors.white,
+                  destinations: [
+                    for (final d in _destinations)
+                      NavigationRailDestination(
+                        icon: Icon(d.icon),
+                        selectedIcon: Icon(d.selectedIcon),
+                        label: Text(d.label),
+                      ),
+                  ],
+                ),
+                const VerticalDivider(width: 1, thickness: 1),
+                Expanded(
+                  child: KeyedSubtree(
+                    key: ValueKey(_selectedIndex),
+                    child: pages[_selectedIndex],
+                  ),
+                ),
+              ],
+            )
+          // ── Mobile: Nội dung theo tab ──
+          : KeyedSubtree(
+              key: ValueKey(_selectedIndex),
+              child: pages[_selectedIndex],
+            ),
     );
   }
 }

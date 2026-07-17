@@ -24,7 +24,6 @@ class _AddressManagementViewState extends State<AddressManagementView> {
   String _wardCode = '';
   bool _isDefault = false;
   bool _loading = true;
-  bool _resolvingAddress = false;
   bool _ignoreNextMapMoveEnd = false;
   bool _showForm = false;
   int? _editingId;
@@ -59,7 +58,7 @@ class _AddressManagementViewState extends State<AddressManagementView> {
       });
     } catch (e) {
       if (!mounted) return;
-      showSnack(context, e.toString());
+      showErrorSnack(context, e);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -145,7 +144,7 @@ class _AddressManagementViewState extends State<AddressManagementView> {
       await _load();
     } catch (e) {
       if (!mounted) return;
-      showSnack(context, e.toString());
+      showErrorSnack(context, e);
     }
   }
 
@@ -159,7 +158,7 @@ class _AddressManagementViewState extends State<AddressManagementView> {
       await _load();
     } catch (e) {
       if (!mounted) return;
-      showSnack(context, e.toString());
+      showErrorSnack(context, e);
     }
   }
 
@@ -196,7 +195,7 @@ class _AddressManagementViewState extends State<AddressManagementView> {
       );
     } catch (e) {
       if (!mounted) return;
-      showSnack(context, e.toString());
+      showErrorSnack(context, e);
     }
   }
 
@@ -216,7 +215,7 @@ class _AddressManagementViewState extends State<AddressManagementView> {
       await _setLocation(LatLng(pos.latitude, pos.longitude), moveMap: true);
     } catch (e) {
       if (!mounted) return;
-      showSnack(context, e.toString());
+      showErrorSnack(context, e);
     }
   }
 
@@ -230,7 +229,6 @@ class _AddressManagementViewState extends State<AddressManagementView> {
     if (mounted) {
       setState(() {
         _location = point;
-        _resolvingAddress = displayName == null || displayName.isEmpty;
       });
     }
 
@@ -257,7 +255,6 @@ class _AddressManagementViewState extends State<AddressManagementView> {
     if (!mounted || request != _locationRequest) return;
     setState(() {
       _location = point;
-      _resolvingAddress = false;
       _detailCtrl.text = address;
       _provinceCode = match?.provinceCode ?? _provinceCode;
       _wardCode = match?.wardCode ?? _wardCode;

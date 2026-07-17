@@ -58,6 +58,18 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> devLogin(String role) async {
+    token = 'dev_dummy_token';
+    user = User(
+      id: 999,
+      email: 'test@$role.com',
+      fullName: 'Dev $role',
+      role: role,
+      points: 100,
+    );
+    notifyListeners();
+  }
+
   Future<void> signup(String email, String fullName, String password) =>
       api.signup(email, fullName, password);
 

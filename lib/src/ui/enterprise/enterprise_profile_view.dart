@@ -10,15 +10,28 @@ class EnterpriseProfileView extends StatefulWidget {
 }
 
 class _EnterpriseProfileViewState extends State<EnterpriseProfileView> {
+  final _formKey = GlobalKey<FormState>();
   final _companyCtrl = TextEditingController();
   final _capacityCtrl = TextEditingController();
   final _areaCtrl = TextEditingController();
-  
+
   Enterprise? _enterprise;
   bool _loading = true;
   bool _saving = false;
 
-  final List<String> _availableTypes = ['ORGANIC', 'PLASTIC', 'PAPER', 'METAL', 'GLASS', 'ELECTRONIC', 'HAZARDOUS', 'BULKY', 'MEDICAL', 'RECYCLABLE', 'OTHER'];
+  final List<String> _availableTypes = [
+    'ORGANIC',
+    'PLASTIC',
+    'PAPER',
+    'METAL',
+    'GLASS',
+    'ELECTRONIC',
+    'HAZARDOUS',
+    'BULKY',
+    'MEDICAL',
+    'RECYCLABLE',
+    'OTHER',
+  ];
   List<String> _selectedTypes = [];
 
   @override
@@ -45,13 +58,13 @@ class _EnterpriseProfileViewState extends State<EnterpriseProfileView> {
         _companyCtrl.text = enterprise.companyName;
         _capacityCtrl.text = enterprise.capacity.toStringAsFixed(0);
         _areaCtrl.text = enterprise.serviceArea;
-        
+
         if (enterprise.acceptedWasteTypes.isNotEmpty) {
-           _selectedTypes = enterprise.acceptedWasteTypes
-               .split(',')
-               .map((e) => e.trim())
-               .where((e) => e.isNotEmpty)
-               .toList();
+          _selectedTypes = enterprise.acceptedWasteTypes
+              .split(',')
+              .map((e) => e.trim())
+              .where((e) => e.isNotEmpty)
+              .toList();
         }
       });
     } catch (_) {
@@ -63,6 +76,11 @@ class _EnterpriseProfileViewState extends State<EnterpriseProfileView> {
   }
 
   Future<void> _save() async {
+    if (!_formKey.currentState!.validate()) return;
+    if (_selectedTypes.isEmpty) {
+      showSnack(context, 'Vui lòng chọn ít nhất một loại rác tiếp nhận');
+      return;
+    }
     setState(() => _saving = true);
     final data = {
       'companyName': _companyCtrl.text.trim(),
@@ -81,7 +99,7 @@ class _EnterpriseProfileViewState extends State<EnterpriseProfileView> {
       await _load();
     } catch (e) {
       if (!mounted) return;
-      showSnack(context, e.toString());
+      showErrorSnack(context, e);
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -99,18 +117,30 @@ class _EnterpriseProfileViewState extends State<EnterpriseProfileView> {
 
   String _getTypeLabel(String type) {
     switch (type) {
-      case 'ORGANIC': return 'Hữu cơ';
-      case 'PLASTIC': return 'Nhựa';
-      case 'PAPER': return 'Giấy';
-      case 'METAL': return 'Kim loại';
-      case 'GLASS': return 'Thủy tinh';
-      case 'ELECTRONIC': return 'Điện tử';
-      case 'HAZARDOUS': return 'Độc hại';
-      case 'BULKY': return 'Cồng kềnh';
-      case 'MEDICAL': return 'Y tế';
-      case 'RECYCLABLE': return 'Tái chế (chung)';
-      case 'OTHER': return 'Khác';
-      default: return type;
+      case 'ORGANIC':
+        return 'Hữu cơ';
+      case 'PLASTIC':
+        return 'Nhựa';
+      case 'PAPER':
+        return 'Giấy';
+      case 'METAL':
+        return 'Kim loại';
+      case 'GLASS':
+        return 'Thủy tinh';
+      case 'ELECTRONIC':
+        return 'Điện tử';
+      case 'HAZARDOUS':
+        return 'Độc hại';
+      case 'BULKY':
+        return 'Cồng kềnh';
+      case 'MEDICAL':
+        return 'Y tế';
+      case 'RECYCLABLE':
+        return 'Tái chế (chung)';
+      case 'OTHER':
+        return 'Khác';
+      default:
+        return type;
     }
   }
 
@@ -157,7 +187,7 @@ class _EnterpriseProfileViewState extends State<EnterpriseProfileView> {
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
-    
+
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -176,85 +206,121 @@ class _EnterpriseProfileViewState extends State<EnterpriseProfileView> {
           ),
           child: Padding(
             padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                TextField(
-                  controller: _companyCtrl,
-                  decoration: inputDecoration(
-                    'Tên công ty / Tổ chức',
-                    icon: Icons.apartment_rounded,
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextFormField(
+                    controller: _companyCtrl,
+                    decoration: inputDecoration(
+                      'Tên công ty / Tổ chức',
+                      icon: Icons.apartment_rounded,
+                    ),
+                    validator: (value) => value == null || value.trim().isEmpty
+                        ? 'Vui lòng nhập tên công ty'
+                        : null,
                   ),
-                ),
-                const SizedBox(height: 20),
-                InkWell(
-                  onTap: _showTypeSelector,
-                  borderRadius: BorderRadius.circular(10),
-                  child: InputDecorator(
-                    decoration: inputDecoration('Loại rác tiếp nhận (Nhấn để chọn)'),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            _selectedTypes.isEmpty 
-                                ? 'Chưa chọn loại rác nào' 
-                                : _selectedTypes.map(_getTypeLabel).join(', '),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: _selectedTypes.isEmpty ? Colors.grey : AppPalette.ink,
+                  const SizedBox(height: 20),
+                  InkWell(
+                    onTap: _showTypeSelector,
+                    borderRadius: BorderRadius.circular(10),
+                    child: InputDecorator(
+                      decoration: inputDecoration(
+                        'Loại rác tiếp nhận (Nhấn để chọn)',
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              _selectedTypes.isEmpty
+                                  ? 'Chưa chọn loại rác nào'
+                                  : _selectedTypes
+                                        .map(_getTypeLabel)
+                                        .join(', '),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: _selectedTypes.isEmpty
+                                    ? Colors.grey
+                                    : AppPalette.ink,
+                              ),
                             ),
                           ),
-                        ),
-                        const Icon(Icons.arrow_drop_down, color: AppPalette.primaryDark),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                TextField(
-                  controller: _capacityCtrl,
-                  keyboardType: TextInputType.number,
-                  decoration: inputDecoration(
-                    'Công suất xử lý (kg/ngày)',
-                    icon: Icons.speed_rounded,
-                  ),
-                ),
-                const SizedBox(height: 20),
-                TextField(
-                  controller: _areaCtrl,
-                  decoration: inputDecoration(
-                    'Khu vực phục vụ',
-                    icon: Icons.map_rounded,
-                  ),
-                ),
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: FilledButton.icon(
-                    onPressed: _saving ? null : _save,
-                    icon: _saving 
-                        ? const SizedBox(
-                            width: 20, height: 20, 
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)
-                          )
-                        : const Icon(Icons.save_rounded),
-                    label: Text(
-                      _saving 
-                          ? 'Đang lưu...' 
-                          : (_enterprise == null ? 'Đăng ký ngay' : 'Cập nhật thông tin'),
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                    ),
-                    style: FilledButton.styleFrom(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
+                          const Icon(
+                            Icons.arrow_drop_down,
+                            color: AppPalette.primaryDark,
+                          ),
+                        ],
                       ),
                     ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 20),
+                  TextFormField(
+                    controller: _capacityCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: inputDecoration(
+                      'Công suất xử lý (kg/ngày)',
+                      icon: Icons.speed_rounded,
+                    ),
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return 'Vui lòng nhập công suất';
+                      }
+                      if (asDouble(value) <= 0) {
+                        return 'Công suất phải lớn hơn 0';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 20),
+                  TextFormField(
+                    controller: _areaCtrl,
+                    decoration: inputDecoration(
+                      'Khu vực phục vụ',
+                      icon: Icons.map_rounded,
+                    ),
+                    validator: (value) => value == null || value.trim().isEmpty
+                        ? 'Vui lòng nhập khu vực phục vụ'
+                        : null,
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: FilledButton.icon(
+                      onPressed: _saving ? null : _save,
+                      icon: _saving
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.save_rounded),
+                      label: Text(
+                        _saving
+                            ? 'Đang lưu...'
+                            : (_enterprise == null
+                                  ? 'Đăng ký ngay'
+                                  : 'Cập nhật thông tin'),
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      style: FilledButton.styleFrom(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -291,7 +357,11 @@ class _EnterpriseProfileViewState extends State<EnterpriseProfileView> {
                   color: Colors.white.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(Icons.business_rounded, color: Colors.white, size: 32),
+                child: const Icon(
+                  Icons.business_rounded,
+                  color: Colors.white,
+                  size: 32,
+                ),
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -310,7 +380,11 @@ class _EnterpriseProfileViewState extends State<EnterpriseProfileView> {
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        const Icon(Icons.star_rounded, color: AppPalette.amber, size: 18),
+                        const Icon(
+                          Icons.star_rounded,
+                          color: AppPalette.amber,
+                          size: 18,
+                        ),
                         const SizedBox(width: 4),
                         Text(
                           '${_enterprise!.rating.toStringAsFixed(1)} / 5.0 Sao',
@@ -336,7 +410,10 @@ class _EnterpriseProfileViewState extends State<EnterpriseProfileView> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _buildHeaderInfo(Icons.speed_rounded, '${_enterprise!.capacity.toStringAsFixed(0)} kg/ngày'),
+                _buildHeaderInfo(
+                  Icons.speed_rounded,
+                  '${_enterprise!.capacity.toStringAsFixed(0)} kg/ngày',
+                ),
                 _buildHeaderInfo(Icons.map_rounded, _enterprise!.serviceArea),
               ],
             ),

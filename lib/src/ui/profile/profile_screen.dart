@@ -44,7 +44,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       showSnack(context, 'Đã cập nhật hồ sơ.');
     } catch (e) {
       if (!mounted) return;
-      showSnack(context, e.toString());
+      showErrorSnack(context, e);
     } finally {
       if (mounted) setState(() => _savingProfile = false);
     }

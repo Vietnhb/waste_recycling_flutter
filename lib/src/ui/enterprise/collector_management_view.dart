@@ -40,7 +40,7 @@ class _CollectorManagementViewState extends State<CollectorManagementView> {
       setState(() => _collectors = collectors);
     } catch (e) {
       if (!mounted) return;
-      showSnack(context, e.toString());
+      showErrorSnack(context, e);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -68,7 +68,7 @@ class _CollectorManagementViewState extends State<CollectorManagementView> {
       await _load();
     } catch (e) {
       if (!mounted) return;
-      showSnack(context, e.toString());
+      showErrorSnack(context, e);
     } finally {
       if (mounted) setState(() => _creating = false);
     }
@@ -82,7 +82,7 @@ class _CollectorManagementViewState extends State<CollectorManagementView> {
       await _load();
     } catch (e) {
       if (!mounted) return;
-      showSnack(context, e.toString());
+      showErrorSnack(context, e);
     }
   }
 
@@ -110,7 +110,10 @@ class _CollectorManagementViewState extends State<CollectorManagementView> {
               IconButton(
                 tooltip: 'Tải lại',
                 onPressed: _load,
-                icon: const Icon(Icons.refresh_rounded, color: AppPalette.primary),
+                icon: const Icon(
+                  Icons.refresh_rounded,
+                  color: AppPalette.primary,
+                ),
               ),
             ],
           ),
@@ -144,7 +147,11 @@ class _CollectorManagementViewState extends State<CollectorManagementView> {
         children: [
           const Row(
             children: [
-              Icon(Icons.person_add_alt_1_rounded, color: AppPalette.primary, size: 24),
+              Icon(
+                Icons.person_add_alt_1_rounded,
+                color: AppPalette.primary,
+                size: 24,
+              ),
               SizedBox(width: 8),
               Text(
                 'Thêm nhân viên mới',
@@ -160,7 +167,10 @@ class _CollectorManagementViewState extends State<CollectorManagementView> {
           TextField(
             controller: _emailCtrl,
             keyboardType: TextInputType.emailAddress,
-            decoration: inputDecoration('Email đăng nhập', icon: Icons.email_rounded),
+            decoration: inputDecoration(
+              'Email đăng nhập',
+              icon: Icons.email_rounded,
+            ),
           ),
           const SizedBox(height: 12),
           TextField(
@@ -181,16 +191,25 @@ class _CollectorManagementViewState extends State<CollectorManagementView> {
               onPressed: _creating ? null : _create,
               icon: _creating
                   ? const SizedBox(
-                      width: 20, height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
                     )
                   : const Icon(Icons.check_circle_outline_rounded),
               label: Text(
                 _creating ? 'Đang tạo...' : 'Tạo nhân viên',
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               style: FilledButton.styleFrom(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
               ),
             ),
           ),
@@ -227,7 +246,9 @@ class _CollectorManagementViewState extends State<CollectorManagementView> {
               ),
               child: Center(
                 child: Text(
-                  collector.userName.isNotEmpty ? collector.userName[0].toUpperCase() : 'C',
+                  collector.userName.isNotEmpty
+                      ? collector.userName[0].toUpperCase()
+                      : 'C',
                   style: const TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.w900,

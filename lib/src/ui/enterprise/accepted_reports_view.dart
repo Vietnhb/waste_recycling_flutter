@@ -52,7 +52,7 @@ class _AcceptedReportsViewState extends State<AcceptedReportsView> {
       });
     } catch (e) {
       if (!mounted) return;
-      showSnack(context, e.toString());
+      showErrorSnack(context, e);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -71,7 +71,7 @@ class _AcceptedReportsViewState extends State<AcceptedReportsView> {
       await _load();
     } catch (e) {
       if (!mounted) return;
-      showSnack(context, e.toString());
+      showErrorSnack(context, e);
     }
   }
 

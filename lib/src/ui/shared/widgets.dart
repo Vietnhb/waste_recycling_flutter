@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../core/error_helpers.dart';
 import '../../core/json_helpers.dart';
 import '../../models/models.dart';
 
@@ -17,6 +18,18 @@ class AppPalette {
   static const amber = Color(0xFFF1B84B);
   static const leaf = Color(0xFF7ABF66);
   static const sky = Color(0xFF4E8FCB);
+}
+
+/// Spacing constants dùng chung toàn bộ app — đảm bảo nhất quán.
+class AppSpacing {
+  /// Khoảng cách giữa các input trong form (12px)
+  static const formGap = 12.0;
+
+  /// Khoảng cách giữa các Card/Section (16px)
+  static const sectionGap = 16.0;
+
+  /// Padding bên trong Card (16px)
+  static const cardPadding = 16.0;
 }
 
 InputDecoration inputDecoration(String label, {IconData? icon}) {
@@ -49,6 +62,11 @@ void showSnack(BuildContext context, String message) {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
     );
+}
+
+/// Hiển thị lỗi thân thiện Tiếng Việt — dùng thay `showSnack(context, e.toString())`.
+void showErrorSnack(BuildContext context, Object error) {
+  showSnack(context, friendlyError(error));
 }
 
 Future<void> logoutToHome(
@@ -101,7 +119,6 @@ Widget remoteImage(String? url, {double height = 150}) {
     ),
   );
 }
-
 
 String statusText(String status) {
   switch (status.toUpperCase()) {
@@ -224,7 +241,7 @@ class SectionTitle extends StatelessWidget {
               ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
             ),
           ),
-          if (action != null) action!,
+          ?action,
         ],
       ),
     );
@@ -290,11 +307,16 @@ class ReportCard extends StatelessWidget {
 
   String _translateCategory(String name) {
     switch (name.toUpperCase()) {
-      case 'ORGANIC': return 'Hữu cơ';
-      case 'RECYCLABLE': return 'Tái chế';
-      case 'HAZARDOUS': return 'Độc hại';
-      case 'OTHER': return 'Khác';
-      default: return name;
+      case 'ORGANIC':
+        return 'Hữu cơ';
+      case 'RECYCLABLE':
+        return 'Tái chế';
+      case 'HAZARDOUS':
+        return 'Độc hại';
+      case 'OTHER':
+        return 'Khác';
+      default:
+        return name;
     }
   }
 
