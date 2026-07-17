@@ -1,9 +1,14 @@
 part of 'citizen_screens.dart';
 
 class AddressManagementView extends StatefulWidget {
-  const AddressManagementView({super.key, required this.controller});
+  const AddressManagementView({
+    super.key,
+    required this.controller,
+    this.onChanged,
+  });
 
   final AppController controller;
+  final VoidCallback? onChanged;
 
   @override
   State<AddressManagementView> createState() => _AddressManagementViewState();
@@ -38,6 +43,7 @@ class _AddressManagementViewState extends State<AddressManagementView> {
 
   @override
   void dispose() {
+    _mapController.dispose();
     _receiverCtrl.dispose();
     _phoneCtrl.dispose();
     _detailCtrl.dispose();
@@ -142,6 +148,7 @@ class _AddressManagementViewState extends State<AddressManagementView> {
       showSnack(context, 'Đã lưu địa chỉ');
       _resetForm();
       await _load();
+      if (mounted) widget.onChanged?.call();
     } catch (e) {
       if (!mounted) return;
       showErrorSnack(context, e);
@@ -156,6 +163,7 @@ class _AddressManagementViewState extends State<AddressManagementView> {
       if (!mounted) return;
       showSnack(context, 'Đã xóa địa chỉ');
       await _load();
+      if (mounted) widget.onChanged?.call();
     } catch (e) {
       if (!mounted) return;
       showErrorSnack(context, e);
@@ -307,10 +315,22 @@ class _AddressManagementViewState extends State<AddressManagementView> {
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(
-        padding: const EdgeInsets.all(16),
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
         children: [
+          _AddressHero(
+            count: _addresses.length,
+            editing: _showForm,
+            onAction: _showForm ? _resetForm : _startCreate,
+          ),
+          const SizedBox(height: 24),
           if (_showForm) ...[
-            SectionTitle(_editingId == null ? 'Thêm địa chỉ' : 'Sửa địa chỉ'),
+            SectionTitle(
+              _editingId == null ? 'Tạo điểm hẹn' : 'Chỉnh điểm hẹn',
+              eyebrow: 'Thông tin nhận rác',
+              subtitle:
+                  'Ghim chính xác trên bản đồ để chuyến thu gom không lạc đường.',
+            ),
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(16),
@@ -334,11 +354,16 @@ class _AddressManagementViewState extends State<AddressManagementView> {
                     ),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<String>(
+                      key: ValueKey('address-province-$_provinceCode'),
                       initialValue: validDropdownValue(
                         _provinceCode.isEmpty ? null : _provinceCode,
                         areas?.provinces.map((p) => p.code) ?? const [],
                       ),
-                      decoration: inputDecoration('Tỉnh/Thành phố'),
+                      isExpanded: true,
+                      decoration: inputDecoration(
+                        'Tỉnh/Thành phố',
+                        icon: Icons.map_rounded,
+                      ),
                       items:
                           areas?.provinces
                               .map(
@@ -356,11 +381,16 @@ class _AddressManagementViewState extends State<AddressManagementView> {
                     ),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<String>(
+                      key: ValueKey('address-ward-$_provinceCode-$_wardCode'),
                       initialValue: validDropdownValue(
                         _wardCode.isEmpty ? null : _wardCode,
                         province?.wards.map((w) => w.code) ?? const [],
                       ),
-                      decoration: inputDecoration('Phường/Xã'),
+                      isExpanded: true,
+                      decoration: inputDecoration(
+                        'Phường/Xã',
+                        icon: Icons.signpost_rounded,
+                      ),
                       items:
                           province?.wards
                               .map(
@@ -407,9 +437,21 @@ class _AddressManagementViewState extends State<AddressManagementView> {
                       ],
                     ),
                     const SizedBox(height: 8),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Đặt làm địa chỉ mặc định'),
+                    SwitchListTile.adaptive(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(AppRadii.md),
+                      ),
+                      tileColor: AppPalette.mint.withValues(alpha: 0.65),
+                      secondary: const Icon(
+                        Icons.star_rounded,
+                        color: AppPalette.amber,
+                      ),
+                      title: const Text(
+                        'Điểm hẹn mặc định',
+                        style: TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                      subtitle: const Text('Ưu tiên khi tạo yêu cầu mới'),
                       value: _isDefault,
                       onChanged: (value) => setState(() => _isDefault = value),
                     ),
@@ -417,7 +459,7 @@ class _AddressManagementViewState extends State<AddressManagementView> {
                     SizedBox(
                       height: 280,
                       child: ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(AppRadii.lg),
                         child: Stack(
                           alignment: Alignment.center,
                           children: [
@@ -475,7 +517,7 @@ class _AddressManagementViewState extends State<AddressManagementView> {
                                 children: [
                                   Icon(
                                     Icons.location_pin,
-                                    color: Colors.red.shade700,
+                                    color: AppPalette.coral,
                                     size: 46,
                                     shadows: const [
                                       Shadow(
@@ -506,9 +548,11 @@ class _AddressManagementViewState extends State<AddressManagementView> {
                         Expanded(
                           child: FilledButton.icon(
                             onPressed: _save,
-                            icon: const Icon(Icons.save),
+                            icon: const Icon(Icons.check_rounded),
                             label: Text(
-                              _editingId == null ? 'Lưu' : 'Cập nhật',
+                              _editingId == null
+                                  ? 'Lưu điểm hẹn'
+                                  : 'Cập nhật điểm hẹn',
                             ),
                           ),
                         ),
@@ -525,7 +569,9 @@ class _AddressManagementViewState extends State<AddressManagementView> {
             ),
           ] else ...[
             SectionTitle(
-              'Địa chỉ của tôi',
+              'Các điểm hẹn của tôi',
+              eyebrow: 'Sẵn sàng thu gom',
+              subtitle: 'Chạm vào một địa chỉ để chỉnh sửa thông tin.',
               action: IconButton(
                 tooltip: 'Tải lại',
                 onPressed: _load,
@@ -533,46 +579,276 @@ class _AddressManagementViewState extends State<AddressManagementView> {
               ),
             ),
             if (_addresses.isEmpty)
-              const EmptyState('Chưa có địa chỉ nào')
+              const EmptyState(
+                'Thêm nơi ở hoặc điểm tập kết thường dùng để báo rác nhanh hơn.',
+                icon: Icons.add_location_alt_rounded,
+                title: 'Chưa có điểm hẹn',
+              )
             else
               ..._addresses.map(
-                (address) => Card(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  child: ListTile(
-                    onTap: () => _fill(address),
-                    leading: Icon(
-                      address.isDefault ? Icons.star : Icons.location_on,
-                      color: address.isDefault ? Colors.amber : Colors.green,
-                    ),
-                    title: Text(
-                      '${address.receiverName} | ${address.phoneNumber}',
-                      style: const TextStyle(fontWeight: FontWeight.w800),
-                    ),
-                    subtitle: Text(
-                      '${formatAddressLine(address.addressNumber, address.detailAddress)}\n'
-                      '${areas?.wardName(address.provinceCode, address.wardCode)}, '
-                      '${areas?.provinceName(address.provinceCode)}',
-                    ),
-                    isThreeLine: true,
-                    trailing: IconButton(
-                      tooltip: 'Xóa',
-                      onPressed: () => _delete(address.id),
-                      icon: const Icon(Icons.delete_outline),
-                    ),
-                  ),
+                (address) => _CitizenAddressCard(
+                  address: address,
+                  wardName:
+                      areas?.wardName(address.provinceCode, address.wardCode) ??
+                      '',
+                  provinceName: areas?.provinceName(address.provinceCode) ?? '',
+                  onEdit: () => _fill(address),
+                  onDelete: () => _delete(address.id),
                 ),
               ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 6),
             SizedBox(
               width: double.infinity,
-              child: OutlinedButton.icon(
+              child: FilledButton.icon(
                 onPressed: _startCreate,
-                icon: const Icon(Icons.add),
-                label: const Text('Thêm địa chỉ mới'),
+                icon: const Icon(Icons.add_location_alt_rounded),
+                label: const Text('Thêm điểm hẹn mới'),
               ),
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+class _AddressHero extends StatelessWidget {
+  const _AddressHero({
+    required this.count,
+    required this.editing,
+    required this.onAction,
+  });
+
+  final int count;
+  final bool editing;
+  final VoidCallback onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(22, 20, 18, 20),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [AppPalette.night, Color(0xFF1A6655)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(AppRadii.xl),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x33082F2B),
+            blurRadius: 24,
+            offset: Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 58,
+            height: 58,
+            decoration: BoxDecoration(
+              color: AppPalette.lime,
+              borderRadius: BorderRadius.circular(21),
+            ),
+            child: Icon(
+              editing
+                  ? Icons.edit_location_alt_rounded
+                  : Icons.home_work_rounded,
+              color: AppPalette.night,
+              size: 29,
+            ),
+          ),
+          const SizedBox(width: 15),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  editing
+                      ? 'Đang đặt lại chiếc ghim'
+                      : '$count điểm hẹn đã lưu',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(color: Colors.white),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  editing
+                      ? 'Kiểm tra kỹ vị trí trước khi lưu.'
+                      : 'Báo rác nhanh hơn ở những nơi quen thuộc.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Colors.white.withValues(alpha: 0.68),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          IconButton(
+            tooltip: editing ? 'Đóng biểu mẫu' : 'Thêm điểm hẹn',
+            style: IconButton.styleFrom(
+              backgroundColor: Colors.white.withValues(alpha: 0.12),
+              foregroundColor: Colors.white,
+            ),
+            onPressed: onAction,
+            icon: Icon(editing ? Icons.close_rounded : Icons.add_rounded),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CitizenAddressCard extends StatelessWidget {
+  const _CitizenAddressCard({
+    required this.address,
+    required this.wardName,
+    required this.provinceName,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  final UserAddress address;
+  final String wardName;
+  final String provinceName;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final region = [
+      wardName,
+      provinceName,
+    ].where((part) => part.trim().isNotEmpty).join(', ');
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Card(
+        child: InkWell(
+          onTap: onEdit,
+          borderRadius: BorderRadius.circular(AppRadii.lg),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: address.isDefault
+                        ? AppPalette.amber.withValues(alpha: 0.18)
+                        : AppPalette.mint,
+                    borderRadius: BorderRadius.circular(17),
+                  ),
+                  child: Icon(
+                    address.isDefault
+                        ? Icons.star_rounded
+                        : Icons.location_on_rounded,
+                    color: address.isDefault
+                        ? AppPalette.amber
+                        : AppPalette.primary,
+                  ),
+                ),
+                const SizedBox(width: 13),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              address.receiverName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                          ),
+                          if (address.isDefault)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppPalette.amber.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(
+                                  AppRadii.pill,
+                                ),
+                              ),
+                              child: const Text(
+                                'Mặc định',
+                                style: TextStyle(
+                                  color: AppPalette.ink,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        formatAddressLine(
+                          address.addressNumber,
+                          address.detailAddress,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: AppPalette.muted,
+                        ),
+                      ),
+                      if (region.isNotEmpty) ...[
+                        const SizedBox(height: 3),
+                        Text(
+                          region,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: AppPalette.muted),
+                        ),
+                      ],
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.phone_outlined,
+                            size: 15,
+                            color: AppPalette.primary,
+                          ),
+                          const SizedBox(width: 5),
+                          Expanded(
+                            child: Text(
+                              address.phoneNumber,
+                              style: Theme.of(context).textTheme.labelMedium,
+                            ),
+                          ),
+                          TextButton.icon(
+                            onPressed: onDelete,
+                            style: TextButton.styleFrom(
+                              foregroundColor: AppPalette.danger,
+                              minimumSize: const Size(0, 36),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                              ),
+                            ),
+                            icon: const Icon(
+                              Icons.delete_outline_rounded,
+                              size: 17,
+                            ),
+                            label: const Text('Xóa'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

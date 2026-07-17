@@ -58,14 +58,11 @@ class _EnterpriseProfileViewState extends State<EnterpriseProfileView> {
         _companyCtrl.text = enterprise.companyName;
         _capacityCtrl.text = enterprise.capacity.toStringAsFixed(0);
         _areaCtrl.text = enterprise.serviceArea;
-
-        if (enterprise.acceptedWasteTypes.isNotEmpty) {
-          _selectedTypes = enterprise.acceptedWasteTypes
-              .split(',')
-              .map((e) => e.trim())
-              .where((e) => e.isNotEmpty)
-              .toList();
-        }
+        _selectedTypes = enterprise.acceptedWasteTypes
+            .split(',')
+            .map((type) => type.trim())
+            .where((type) => type.isNotEmpty)
+            .toList();
       });
     } catch (_) {
       if (!mounted) return;
@@ -105,16 +102,6 @@ class _EnterpriseProfileViewState extends State<EnterpriseProfileView> {
     }
   }
 
-  void _toggleType(String type) {
-    setState(() {
-      if (_selectedTypes.contains(type)) {
-        _selectedTypes.remove(type);
-      } else {
-        _selectedTypes.add(type);
-      }
-    });
-  }
-
   String _getTypeLabel(String type) {
     switch (type) {
       case 'ORGANIC':
@@ -136,7 +123,7 @@ class _EnterpriseProfileViewState extends State<EnterpriseProfileView> {
       case 'MEDICAL':
         return 'Y tế';
       case 'RECYCLABLE':
-        return 'Tái chế (chung)';
+        return 'Tái chế tổng hợp';
       case 'OTHER':
         return 'Khác';
       default:
@@ -144,157 +131,618 @@ class _EnterpriseProfileViewState extends State<EnterpriseProfileView> {
     }
   }
 
+  IconData _getTypeIcon(String type) {
+    switch (type) {
+      case 'ORGANIC':
+        return Icons.compost_rounded;
+      case 'PLASTIC':
+        return Icons.local_drink_rounded;
+      case 'PAPER':
+        return Icons.description_rounded;
+      case 'METAL':
+        return Icons.hardware_rounded;
+      case 'GLASS':
+        return Icons.wine_bar_rounded;
+      case 'ELECTRONIC':
+        return Icons.devices_other_rounded;
+      case 'HAZARDOUS':
+        return Icons.warning_amber_rounded;
+      case 'BULKY':
+        return Icons.chair_rounded;
+      case 'MEDICAL':
+        return Icons.medical_services_rounded;
+      case 'RECYCLABLE':
+        return Icons.recycling_rounded;
+      default:
+        return Icons.category_rounded;
+    }
+  }
+
   Future<void> _showTypeSelector() async {
-    await showDialog(
+    await showModalBottomSheet<void>(
       context: context,
-      builder: (ctx) {
+      useSafeArea: true,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) {
         return StatefulBuilder(
-          builder: (context, setStateDialog) {
-            return AlertDialog(
-              title: const Text('Chọn loại rác tiếp nhận'),
-              content: SizedBox(
-                width: double.maxFinite,
-                child: ListView(
-                  shrinkWrap: true,
-                  children: _availableTypes.map((type) {
-                    return CheckboxListTile(
-                      title: Text(_getTypeLabel(type)),
-                      value: _selectedTypes.contains(type),
-                      onChanged: (val) {
-                        setStateDialog(() {
-                          _toggleType(type);
-                        });
+          builder: (context, setModalState) {
+            return FractionallySizedBox(
+              heightFactor: 0.82,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(22, 2, 22, 14),
+                    child: SectionTitle(
+                      'Vật liệu tiếp nhận',
+                      eyebrow: 'NĂNG LỰC XỬ LÝ',
+                      subtitle:
+                          'Chọn tất cả nhóm vật liệu phù hợp với dây chuyền của doanh nghiệp.',
+                      action: FilledButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('Hoàn tất'),
+                      ),
+                    ),
+                  ),
+                  const Divider(),
+                  Expanded(
+                    child: GridView.builder(
+                      padding: const EdgeInsets.fromLTRB(18, 14, 18, 28),
+                      itemCount: _availableTypes.length,
+                      gridDelegate:
+                          const SliverGridDelegateWithMaxCrossAxisExtent(
+                            maxCrossAxisExtent: 280,
+                            mainAxisExtent: 82,
+                            crossAxisSpacing: 10,
+                            mainAxisSpacing: 10,
+                          ),
+                      itemBuilder: (context, index) {
+                        final type = _availableTypes[index];
+                        final selected = _selectedTypes.contains(type);
+                        return AppSurface(
+                          onTap: () => setModalState(() {
+                            if (selected) {
+                              _selectedTypes.remove(type);
+                            } else {
+                              _selectedTypes.add(type);
+                            }
+                          }),
+                          color: selected
+                              ? AppPalette.mint
+                              : AppPalette.surface,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 12,
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 42,
+                                height: 42,
+                                decoration: BoxDecoration(
+                                  color:
+                                      (selected
+                                              ? AppPalette.primary
+                                              : AppPalette.muted)
+                                          .withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(
+                                    AppRadii.sm,
+                                  ),
+                                ),
+                                child: Icon(
+                                  _getTypeIcon(type),
+                                  color: selected
+                                      ? AppPalette.primary
+                                      : AppPalette.muted,
+                                ),
+                              ),
+                              const SizedBox(width: 11),
+                              Expanded(
+                                child: Text(
+                                  _getTypeLabel(type),
+                                  style: TextStyle(
+                                    color: AppPalette.ink,
+                                    fontWeight: selected
+                                        ? FontWeight.w900
+                                        : FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                              Icon(
+                                selected
+                                    ? Icons.check_circle_rounded
+                                    : Icons.circle_outlined,
+                                color: selected
+                                    ? AppPalette.primary
+                                    : AppPalette.line,
+                              ),
+                            ],
+                          ),
+                        );
                       },
-                    );
-                  }).toList(),
-                ),
+                    ),
+                  ),
+                ],
               ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Xong'),
-                ),
-              ],
             );
           },
         );
       },
     );
+    if (mounted) setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const AppLoadingView(label: 'Đang chuẩn bị hồ sơ doanh nghiệp…');
     }
 
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        if (_enterprise != null) ...[
-          _buildPremiumHeader(),
-          const SizedBox(height: 20),
-        ],
-        SectionTitle(
-          _enterprise == null ? 'Đăng ký doanh nghiệp' : 'Cập nhật thông tin',
-        ),
-        Card(
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-            side: BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  TextFormField(
-                    controller: _companyCtrl,
-                    decoration: inputDecoration(
-                      'Tên công ty / Tổ chức',
-                      icon: Icons.apartment_rounded,
-                    ),
-                    validator: (value) => value == null || value.trim().isEmpty
-                        ? 'Vui lòng nhập tên công ty'
-                        : null,
-                  ),
-                  const SizedBox(height: 20),
-                  InkWell(
-                    onTap: _showTypeSelector,
-                    borderRadius: BorderRadius.circular(10),
-                    child: InputDecorator(
-                      decoration: inputDecoration(
-                        'Loại rác tiếp nhận (Nhấn để chọn)',
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final horizontalPadding = constraints.maxWidth >= 900 ? 28.0 : 16.0;
+        return RefreshIndicator(
+          onRefresh: _load,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: EdgeInsets.fromLTRB(
+              horizontalPadding,
+              22,
+              horizontalPadding,
+              40,
+            ),
+            children: [
+              Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 1060),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SectionTitle(
+                        _enterprise == null
+                            ? 'Bắt đầu hành trình xanh'
+                            : 'Hồ sơ doanh nghiệp',
+                        eyebrow: 'DẤU ẤN THƯƠNG HIỆU',
+                        subtitle: _enterprise == null
+                            ? 'Cung cấp năng lực xử lý để hệ thống kết nối những yêu cầu phù hợp.'
+                            : 'Giữ thông tin năng lực luôn chính xác để điều phối đúng khu vực và vật liệu.',
                       ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      if (_enterprise == null)
+                        _buildOnboardingHeader()
+                      else
+                        _buildEnterpriseHeader(),
+                      const SizedBox(height: 28),
+                      SectionTitle(
+                        _enterprise == null
+                            ? 'Thông tin đăng ký'
+                            : 'Cập nhật năng lực',
+                        eyebrow: 'THÔNG TIN VẬN HÀNH',
+                        subtitle:
+                            'Các trường này ảnh hưởng trực tiếp tới khả năng ghép yêu cầu thu gom.',
+                      ),
+                      _buildProfileForm(),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildOnboardingHeader() {
+    return AppSurface(
+      color: AppPalette.cream,
+      padding: const EdgeInsets.all(22),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 62,
+            height: 62,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [AppPalette.lime, AppPalette.mintStrong],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(AppRadii.lg),
+            ),
+            child: const Icon(
+              Icons.apartment_rounded,
+              color: AppPalette.primaryDark,
+              size: 30,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Một hồ sơ tốt mở ra đúng cơ hội',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Hệ thống dùng loại vật liệu, công suất và khu vực phục vụ để đưa yêu cầu phù hợp đến doanh nghiệp.',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: AppPalette.muted,
+                    height: 1.45,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEnterpriseHeader() {
+    final enterprise = _enterprise!;
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [AppPalette.night, AppPalette.nightSoft, AppPalette.primary],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(AppRadii.xl),
+        boxShadow: [
+          BoxShadow(
+            color: AppPalette.night.withValues(alpha: 0.2),
+            blurRadius: 32,
+            offset: const Offset(0, 16),
+          ),
+        ],
+      ),
+      child: Stack(
+        children: [
+          Positioned(
+            right: -34,
+            top: -46,
+            child: Icon(
+              Icons.recycling_rounded,
+              color: Colors.white.withValues(alpha: 0.07),
+              size: 220,
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 62,
+                      height: 62,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(AppRadii.lg),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.15),
+                        ),
+                      ),
+                      child: const Icon(
+                        Icons.apartment_rounded,
+                        color: AppPalette.lime,
+                        size: 31,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            child: Text(
-                              _selectedTypes.isEmpty
-                                  ? 'Chưa chọn loại rác nào'
-                                  : _selectedTypes
-                                        .map(_getTypeLabel)
-                                        .join(', '),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: _selectedTypes.isEmpty
-                                    ? Colors.grey
-                                    : AppPalette.ink,
-                              ),
-                            ),
+                          Text(
+                            enterprise.companyName,
+                            style: Theme.of(context).textTheme.headlineSmall
+                                ?.copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: -0.7,
+                                ),
                           ),
-                          const Icon(
-                            Icons.arrow_drop_down,
-                            color: AppPalette.primaryDark,
+                          const SizedBox(height: 7),
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.verified_rounded,
+                                color: AppPalette.lime,
+                                size: 18,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                'Đối tác vận hành xanh',
+                                style: Theme.of(context).textTheme.labelLarge
+                                    ?.copyWith(color: Colors.white70),
+                              ),
+                            ],
                           ),
                         ],
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 20),
-                  TextFormField(
-                    controller: _capacityCtrl,
-                    keyboardType: TextInputType.number,
-                    decoration: inputDecoration(
-                      'Công suất xử lý (kg/ngày)',
-                      icon: Icons.speed_rounded,
+                  ],
+                ),
+                const SizedBox(height: 24),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final compact = constraints.maxWidth < 620;
+                    final items = [
+                      (
+                        icon: Icons.star_rounded,
+                        value: enterprise.rating.toStringAsFixed(1),
+                        label: 'Đánh giá',
+                      ),
+                      (
+                        icon: Icons.speed_rounded,
+                        value: '${enterprise.capacity.toStringAsFixed(0)} kg',
+                        label: 'Công suất/ngày',
+                      ),
+                      (
+                        icon: Icons.category_rounded,
+                        value: '${_selectedTypes.length}',
+                        label: 'Nhóm vật liệu',
+                      ),
+                    ];
+                    return Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: [
+                        for (final item in items)
+                          SizedBox(
+                            width: compact
+                                ? (constraints.maxWidth - 10) / 2
+                                : (constraints.maxWidth - 20) / 3,
+                            child: Container(
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.16),
+                                borderRadius: BorderRadius.circular(
+                                  AppRadii.md,
+                                ),
+                                border: Border.all(
+                                  color: Colors.white.withValues(alpha: 0.08),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    item.icon,
+                                    color: AppPalette.lime,
+                                    size: 20,
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          item.value,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w900,
+                                            fontSize: 16,
+                                          ),
+                                        ),
+                                        Text(
+                                          item.label,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            color: Colors.white60,
+                                            fontSize: 11,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                      ],
+                    );
+                  },
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.location_on_rounded,
+                      color: AppPalette.apricot,
+                      size: 19,
                     ),
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'Vui lòng nhập công suất';
-                      }
-                      if (asDouble(value) <= 0) {
-                        return 'Công suất phải lớn hơn 0';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 20),
-                  TextFormField(
-                    controller: _areaCtrl,
-                    decoration: inputDecoration(
-                      'Khu vực phục vụ',
-                      icon: Icons.map_rounded,
+                    const SizedBox(width: 7),
+                    Expanded(
+                      child: Text(
+                        enterprise.serviceArea,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                     ),
-                    validator: (value) => value == null || value.trim().isEmpty
-                        ? 'Vui lòng nhập khu vực phục vụ'
-                        : null,
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProfileForm() {
+    return AppSurface(
+      padding: const EdgeInsets.all(20),
+      shadow: true,
+      child: Form(
+        key: _formKey,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final twoColumns = constraints.maxWidth >= 680;
+            final halfWidth = twoColumns
+                ? (constraints.maxWidth - 14) / 2
+                : constraints.maxWidth;
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextFormField(
+                  controller: _companyCtrl,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: inputDecoration(
+                    'Tên công ty / tổ chức',
+                    icon: Icons.apartment_rounded,
                   ),
-                  const SizedBox(height: 24),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 48,
+                  validator: (value) => value == null || value.trim().isEmpty
+                      ? 'Vui lòng nhập tên công ty'
+                      : null,
+                ),
+                const SizedBox(height: 16),
+                InkWell(
+                  onTap: _showTypeSelector,
+                  borderRadius: BorderRadius.circular(AppRadii.md),
+                  child: InputDecorator(
+                    decoration:
+                        inputDecoration(
+                          'Vật liệu tiếp nhận',
+                          icon: Icons.recycling_rounded,
+                        ).copyWith(
+                          suffixIcon: const Icon(Icons.chevron_right_rounded),
+                        ),
+                    child: _selectedTypes.isEmpty
+                        ? const Text(
+                            'Chạm để chọn nhóm vật liệu',
+                            style: TextStyle(color: AppPalette.muted),
+                          )
+                        : Wrap(
+                            spacing: 6,
+                            runSpacing: 6,
+                            children: [
+                              for (final type in _selectedTypes.take(5))
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 9,
+                                    vertical: 5,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppPalette.mint,
+                                    borderRadius: BorderRadius.circular(
+                                      AppRadii.pill,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    _getTypeLabel(type),
+                                    style: const TextStyle(
+                                      color: AppPalette.primaryDark,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                              if (_selectedTypes.length > 5)
+                                Text(
+                                  '+${_selectedTypes.length - 5}',
+                                  style: const TextStyle(
+                                    color: AppPalette.primary,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                            ],
+                          ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Wrap(
+                  spacing: 14,
+                  runSpacing: 16,
+                  children: [
+                    SizedBox(
+                      width: halfWidth,
+                      child: TextFormField(
+                        controller: _capacityCtrl,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: inputDecoration(
+                          'Công suất xử lý (kg/ngày)',
+                          icon: Icons.speed_rounded,
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Vui lòng nhập công suất';
+                          }
+                          if (asDouble(value) <= 0) {
+                            return 'Công suất phải lớn hơn 0';
+                          }
+                          return null;
+                        },
+                      ),
+                    ),
+                    SizedBox(
+                      width: halfWidth,
+                      child: TextFormField(
+                        controller: _areaCtrl,
+                        textCapitalization: TextCapitalization.sentences,
+                        decoration: inputDecoration(
+                          'Khu vực phục vụ',
+                          icon: Icons.map_rounded,
+                        ),
+                        validator: (value) =>
+                            value == null || value.trim().isEmpty
+                            ? 'Vui lòng nhập khu vực phục vụ'
+                            : null,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 22),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(
+                      Icons.info_outline_rounded,
+                      color: AppPalette.sky,
+                      size: 19,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Thay đổi được áp dụng cho các yêu cầu mới và không làm gián đoạn chuyến đang xử lý.',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppPalette.muted,
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: SizedBox(
+                    width: constraints.maxWidth < 520 ? double.infinity : null,
                     child: FilledButton.icon(
                       onPressed: _saving ? null : _save,
                       icon: _saving
                           ? const SizedBox(
-                              width: 20,
-                              height: 20,
+                              width: 18,
+                              height: 18,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
                                 color: Colors.white,
@@ -303,141 +751,18 @@ class _EnterpriseProfileViewState extends State<EnterpriseProfileView> {
                           : const Icon(Icons.save_rounded),
                       label: Text(
                         _saving
-                            ? 'Đang lưu...'
-                            : (_enterprise == null
-                                  ? 'Đăng ký ngay'
-                                  : 'Cập nhật thông tin'),
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      style: FilledButton.styleFrom(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
+                            ? 'Đang lưu thay đổi…'
+                            : _enterprise == null
+                            ? 'Hoàn tất đăng ký'
+                            : 'Lưu hồ sơ',
                       ),
                     ),
                   ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildPremiumHeader() {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [AppPalette.primaryDark, AppPalette.primary],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: AppPalette.primary.withValues(alpha: 0.3),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(
-                  Icons.business_rounded,
-                  color: Colors.white,
-                  size: 32,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _enterprise!.companyName,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: -0.5,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.star_rounded,
-                          color: AppPalette.amber,
-                          size: 18,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          '${_enterprise!.rating.toStringAsFixed(1)} / 5.0 Sao',
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.9),
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _buildHeaderInfo(
-                  Icons.speed_rounded,
-                  '${_enterprise!.capacity.toStringAsFixed(0)} kg/ngày',
-                ),
-                _buildHeaderInfo(Icons.map_rounded, _enterprise!.serviceArea),
               ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHeaderInfo(IconData icon, String text) {
-    return Expanded(
-      child: Row(
-        children: [
-          Icon(icon, color: AppPalette.mint, size: 18),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              text,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: Colors.white, fontSize: 13),
-            ),
-          ),
-        ],
+            );
+          },
+        ),
       ),
     );
   }

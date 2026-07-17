@@ -13,6 +13,8 @@ class _CollectorReportsViewState extends State<CollectorReportsView> {
   Collector? _collector;
   List<WasteReport> _reports = const [];
   bool _loading = true;
+  bool _loadFailed = false;
+  String? _updatingStatus;
   StreamSubscription<JsonMap>? _realtimeSub;
 
   @override
@@ -22,7 +24,7 @@ class _CollectorReportsViewState extends State<CollectorReportsView> {
     _realtimeSub = widget.controller.realtime.events.listen((event) {
       final type = asString(event['type']);
       if (type.startsWith('REPORT_') || type == 'COLLECTOR_STATUS_CHANGED') {
-        _load();
+        _load(showLoading: false);
       }
     });
   }
@@ -33,8 +35,8 @@ class _CollectorReportsViewState extends State<CollectorReportsView> {
     super.dispose();
   }
 
-  Future<void> _load() async {
-    setState(() => _loading = true);
+  Future<void> _load({bool showLoading = true}) async {
+    if (showLoading) setState(() => _loading = true);
     try {
       final results = await Future.wait([
         widget.controller.api.getCollectorProfile(),
@@ -44,22 +46,30 @@ class _CollectorReportsViewState extends State<CollectorReportsView> {
       setState(() {
         _collector = results[0] as Collector;
         _reports = results[1] as List<WasteReport>;
+        _loadFailed = false;
       });
     } catch (e) {
       if (!mounted) return;
+      setState(() {
+        _loadFailed = _collector == null && _reports.isEmpty;
+      });
       showErrorSnack(context, e);
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && showLoading) setState(() => _loading = false);
     }
   }
 
   Future<void> _changeStatus(String status) async {
+    if (_updatingStatus != null || _collector?.currentStatus == status) return;
+    setState(() => _updatingStatus = status);
     try {
       await widget.controller.api.updateCollectorStatus(status);
-      await _load();
+      await _load(showLoading: false);
     } catch (e) {
       if (!mounted) return;
       showErrorSnack(context, e);
+    } finally {
+      if (mounted) setState(() => _updatingStatus = null);
     }
   }
 
@@ -76,7 +86,7 @@ class _CollectorReportsViewState extends State<CollectorReportsView> {
       builder: (context) =>
           CollectorStatusDialog(report: report, controller: widget.controller),
     );
-    if (updated == true) await _load();
+    if (updated == true) await _load(showLoading: false);
   }
 
   void _openReportMap(WasteReport report) {
@@ -94,46 +104,104 @@ class _CollectorReportsViewState extends State<CollectorReportsView> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_loading && _collector == null && _reports.isEmpty) {
+      return const AppLoadingView(label: 'Đang chuẩn bị lộ trình hôm nay…');
+    }
     final activeReports = _reports
         .where((report) => report.status != 'COLLECTED')
         .toList();
     final activeCount = activeReports.length;
 
-    return RefreshIndicator(
-      onRefresh: _load,
-      child: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          if (_collector != null)
-            _CollectorHeader(
-              collector: _collector!,
-              activeCount: activeCount,
-              onStatusChanged: _changeStatus,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final horizontalPadding = constraints.maxWidth >= 900 ? 28.0 : 16.0;
+        return RefreshIndicator(
+          onRefresh: () => _load(showLoading: false),
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: EdgeInsets.fromLTRB(
+              horizontalPadding,
+              22,
+              horizontalPadding,
+              40,
             ),
-          const SizedBox(height: 16),
-          SectionTitle(
-            'Nhiệm vụ',
-            action: IconButton(
-              tooltip: 'Tải lại',
-              onPressed: _load,
-              icon: const Icon(Icons.refresh),
-            ),
-          ),
-          if (activeReports.isEmpty)
-            const EmptyState('Chưa có nhiệm vụ đang xử lý')
-          else
-            ...activeReports.map(
-              (report) => _CollectorJobCard(
-                report: report,
-                onOpenMap: () => _openReportMap(report),
-                onUpdate: report.status == 'COLLECTED'
-                    ? null
-                    : () => _updateReport(report),
+            children: [
+              Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 1180),
+                  child: _loadFailed
+                      ? _CollectorLoadFailure(
+                          title: 'Chưa tải được chuyến thu gom',
+                          message:
+                              'Kiểm tra kết nối rồi thử lại để nhận danh sách nhiệm vụ mới nhất.',
+                          onRetry: _load,
+                        )
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (_collector != null)
+                              _CollectorHeader(
+                                collector: _collector!,
+                                activeCount: activeCount,
+                                updatingStatus: _updatingStatus,
+                                onStatusChanged: _changeStatus,
+                              ),
+                            const SizedBox(height: 30),
+                            SectionTitle(
+                              'Các điểm cần đến',
+                              eyebrow: 'LỘ TRÌNH TRONG CA',
+                              subtitle: activeReports.isEmpty
+                                  ? 'Bạn đã xử lý hết những chuyến đang được giao.'
+                                  : '$activeCount điểm đang chờ bạn cập nhật tiến độ',
+                              action: IconButton.filledTonal(
+                                tooltip: 'Tải lại danh sách nhiệm vụ',
+                                onPressed: () => _load(showLoading: false),
+                                icon: const Icon(Icons.refresh_rounded),
+                              ),
+                            ),
+                            if (activeReports.isEmpty)
+                              const EmptyState(
+                                'Khi có chuyến mới, địa chỉ và bản đồ dẫn đường sẽ xuất hiện tại đây.',
+                                title: 'Ca làm đang thông thoáng',
+                                icon: Icons.route_rounded,
+                              )
+                            else
+                              LayoutBuilder(
+                                builder: (context, listConstraints) {
+                                  final twoColumns =
+                                      listConstraints.maxWidth >= 900;
+                                  final cardWidth = twoColumns
+                                      ? (listConstraints.maxWidth - 16) / 2
+                                      : listConstraints.maxWidth;
+                                  return Wrap(
+                                    spacing: 16,
+                                    runSpacing: 16,
+                                    children: [
+                                      for (final report in activeReports)
+                                        SizedBox(
+                                          width: cardWidth,
+                                          child: _CollectorJobCard(
+                                            report: report,
+                                            onOpenMap: () =>
+                                                _openReportMap(report),
+                                            onUpdate:
+                                                report.status == 'COLLECTED'
+                                                ? null
+                                                : () => _updateReport(report),
+                                          ),
+                                        ),
+                                    ],
+                                  );
+                                },
+                              ),
+                          ],
+                        ),
+                ),
               ),
-            ),
-        ],
-      ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -142,114 +210,210 @@ class _CollectorHeader extends StatelessWidget {
   const _CollectorHeader({
     required this.collector,
     required this.activeCount,
+    required this.updatingStatus,
     required this.onStatusChanged,
   });
 
   final Collector collector;
   final int activeCount;
+  final String? updatingStatus;
   final ValueChanged<String> onStatusChanged;
 
   @override
   Widget build(BuildContext context) {
     final status = collector.currentStatus;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppPalette.primaryDark,
-        borderRadius: BorderRadius.circular(8),
+    final statusActions = [
+      (value: 'AVAILABLE', label: 'Sẵn sàng', icon: Icons.bolt_rounded),
+      (value: 'BUSY', label: 'Tạm bận', icon: Icons.pause_rounded),
+      (value: 'ON_THE_WAY', label: 'Đang đi', icon: Icons.navigation_rounded),
+      (value: 'OFFLINE', label: 'Kết ca', icon: Icons.bedtime_rounded),
+    ];
+
+    return Semantics(
+      container: true,
+      label:
+          'Thông tin ca làm. ${activeCount == 0 ? 'Không có điểm đang chờ' : '$activeCount điểm đang chờ'}. Trạng thái ${statusText(status)}.',
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(AppRadii.xl),
+        child: DecoratedBox(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [AppPalette.night, AppPalette.nightSoft],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+          child: Stack(
+            children: [
+              Positioned(
+                right: -55,
+                top: -80,
+                child: _HeaderGlow(size: 220, color: AppPalette.jade),
+              ),
+              Positioned(
+                right: 115,
+                bottom: -95,
+                child: _HeaderGlow(size: 190, color: AppPalette.lime),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(24),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final compact = constraints.maxWidth < 620;
+                    final identity = Row(
+                      children: [
+                        Container(
+                          width: compact ? 54 : 62,
+                          height: compact ? 54 : 62,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(AppRadii.md),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.13),
+                            ),
+                          ),
+                          child: const Icon(
+                            Icons.local_shipping_rounded,
+                            color: AppPalette.lime,
+                            size: 31,
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'CA THU GOM HÔM NAY',
+                                style: Theme.of(context).textTheme.labelSmall
+                                    ?.copyWith(
+                                      color: AppPalette.lime,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: 1.35,
+                                    ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                collector.userName.trim().isEmpty
+                                    ? 'Nhân viên thu gom'
+                                    : collector.userName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.headlineSmall
+                                    ?.copyWith(color: Colors.white),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                collector.enterpriseName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.7),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (compact) ...[
+                          identity,
+                          const SizedBox(height: 16),
+                          _DriverStatusBadge(status),
+                        ] else
+                          Row(
+                            children: [
+                              Expanded(child: identity),
+                              const SizedBox(width: 16),
+                              _DriverStatusBadge(status),
+                            ],
+                          ),
+                        const SizedBox(height: 22),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _HeaderMetric(
+                                label: 'Điểm đang chờ',
+                                value: '$activeCount',
+                                icon: Icons.route_rounded,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: _HeaderMetric(
+                                label: 'Nhịp vận hành',
+                                value: activeCount == 0
+                                    ? 'Thông thoáng'
+                                    : 'Đang xử lý',
+                                icon: activeCount == 0
+                                    ? Icons.eco_rounded
+                                    : Icons.speed_rounded,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+                        Text(
+                          'Cập nhật trạng thái ca làm',
+                          style: Theme.of(context).textTheme.labelMedium
+                              ?.copyWith(
+                                color: Colors.white.withValues(alpha: 0.72),
+                                fontWeight: FontWeight.w800,
+                              ),
+                        ),
+                        const SizedBox(height: 10),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            for (final action in statusActions)
+                              _StatusAction(
+                                label: action.label,
+                                icon: action.icon,
+                                selected: status == action.value,
+                                busy: updatingStatus == action.value,
+                                onPressed:
+                                    updatingStatus != null ||
+                                        status == action.value
+                                    ? null
+                                    : () => onStatusChanged(action.value),
+                              ),
+                          ],
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(
-                  Icons.local_shipping_rounded,
-                  color: Colors.white,
-                  size: 34,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      collector.userName,
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      collector.enterpriseName,
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.78),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              _DriverStatusBadge(status),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: _HeaderMetric(
-                  label: 'Điểm cần lấy',
-                  value: '$activeCount',
-                  icon: Icons.route_rounded,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _HeaderMetric(
-                  label: 'Trạng thái',
-                  value: statusText(status),
-                  icon: Icons.speed_rounded,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _StatusAction(
-                label: 'Sẵn sàng',
-                selected: status == 'AVAILABLE',
-                onPressed: () => onStatusChanged('AVAILABLE'),
-              ),
-              _StatusAction(
-                label: 'Tạm bận',
-                selected: status == 'BUSY',
-                onPressed: () => onStatusChanged('BUSY'),
-              ),
-              _StatusAction(
-                label: 'Đang đi',
-                selected: status == 'ON_THE_WAY',
-                onPressed: () => onStatusChanged('ON_THE_WAY'),
-              ),
-              _StatusAction(
-                label: 'Nghỉ',
-                selected: status == 'OFFLINE',
-                onPressed: () => onStatusChanged('OFFLINE'),
-              ),
-            ],
-          ),
-        ],
+    );
+  }
+}
+
+class _HeaderGlow extends StatelessWidget {
+  const _HeaderGlow({required this.size, required this.color});
+
+  final double size;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: color.withValues(alpha: 0.08),
+        ),
       ),
     );
   }
@@ -269,15 +433,25 @@ class _HeaderMetric extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      constraints: const BoxConstraints(minHeight: 78),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(8),
+        color: Colors.white.withValues(alpha: 0.09),
+        borderRadius: BorderRadius.circular(AppRadii.md),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
       ),
       child: Row(
         children: [
-          Icon(icon, color: Colors.white, size: 20),
-          const SizedBox(width: 8),
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: AppPalette.lime.withValues(alpha: 0.13),
+              borderRadius: BorderRadius.circular(AppRadii.sm),
+            ),
+            child: Icon(icon, color: AppPalette.lime, size: 19),
+          ),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -285,11 +459,12 @@ class _HeaderMetric extends StatelessWidget {
                 Text(
                   label,
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.72),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
+                    color: Colors.white.withValues(alpha: 0.66),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
+                const SizedBox(height: 2),
                 Text(
                   value,
                   maxLines: 1,
@@ -297,6 +472,7 @@ class _HeaderMetric extends StatelessWidget {
                   style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w900,
+                    fontSize: 15,
                   ),
                 ),
               ],
@@ -311,23 +487,73 @@ class _HeaderMetric extends StatelessWidget {
 class _StatusAction extends StatelessWidget {
   const _StatusAction({
     required this.label,
+    required this.icon,
     required this.selected,
+    required this.busy,
     required this.onPressed,
   });
 
   final String label;
+  final IconData icon;
   final bool selected;
-  final VoidCallback onPressed;
+  final bool busy;
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
-    return selected
-        ? FilledButton(onPressed: onPressed, child: Text(label))
-        : OutlinedButton(
-            style: OutlinedButton.styleFrom(foregroundColor: Colors.white),
-            onPressed: onPressed,
-            child: Text(label),
-          );
+    final foreground = selected ? AppPalette.night : Colors.white;
+    return Semantics(
+      button: true,
+      selected: selected,
+      enabled: onPressed != null,
+      label: '$label${selected ? ', đang chọn' : ''}',
+      child: Material(
+        color: selected
+            ? AppPalette.lime
+            : Colors.white.withValues(alpha: 0.08),
+        shape: StadiumBorder(
+          side: BorderSide(
+            color: selected
+                ? AppPalette.lime
+                : Colors.white.withValues(alpha: 0.2),
+          ),
+        ),
+        child: InkWell(
+          onTap: onPressed,
+          customBorder: const StadiumBorder(),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 44),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (busy)
+                    SizedBox(
+                      width: 17,
+                      height: 17,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: foreground,
+                      ),
+                    )
+                  else
+                    Icon(icon, size: 18, color: foreground),
+                  const SizedBox(width: 7),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      color: foreground,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -339,10 +565,17 @@ class _DriverStatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(999),
+        color: Colors.white.withValues(alpha: 0.96),
+        borderRadius: BorderRadius.circular(AppRadii.pill),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -376,94 +609,198 @@ class _CollectorJobCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isOnTheWay = report.status == 'ON_THE_WAY';
-    final isCollected = report.status == 'COLLECTED';
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
+    final category = _collectorCategoryLabel(report.categoryName);
+    final address = formatAddressLine(
+      report.addressNumber,
+      report.addressDetail,
+    );
+    final receiver = report.receiverName.trim().isEmpty
+        ? 'Người nhận chưa cập nhật tên'
+        : report.receiverName.trim();
+    final phone = report.phoneNumber.trim();
+
+    return Semantics(
+      container: true,
+      label:
+          'Chuyến số ${report.id}, $category, ${statusText(report.status)}${address.isEmpty ? '' : ', $address'}',
+      child: Card(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: statusColor(report.status).withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(8),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
+              child: Row(
+                children: [
+                  Container(
+                    width: 46,
+                    height: 46,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          statusColor(report.status).withValues(alpha: 0.18),
+                          AppPalette.mint,
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(AppRadii.md),
+                    ),
+                    child: Icon(
+                      _collectorCategoryIcon(report.categoryName),
+                      color: statusColor(report.status),
+                      size: 24,
+                    ),
                   ),
-                  child: Icon(
-                    isCollected
-                        ? Icons.check_circle_rounded
-                        : Icons.local_shipping_rounded,
-                    color: statusColor(report.status),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'CHUYẾN #${report.id}',
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(
+                                color: AppPalette.primary,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 1.15,
+                              ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          category,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
+                  const SizedBox(width: 10),
+                  StatusChip(report.status),
+                ],
+              ),
+            ),
+            _ReportMapPreview(report: report, onTap: onOpenMap),
+            Padding(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        '#${report.id} - ${report.categoryName}',
-                        style: Theme.of(context).textTheme.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w900),
+                      const Icon(
+                        Icons.location_on_rounded,
+                        color: AppPalette.coral,
+                        size: 21,
                       ),
-                      Text(
-                        statusText(report.status),
-                        style: TextStyle(
-                          color: statusColor(report.status),
-                          fontWeight: FontWeight.w800,
+                      const SizedBox(width: 9),
+                      Expanded(
+                        child: Text(
+                          address.isEmpty
+                              ? 'Chưa có địa chỉ chi tiết'
+                              : address,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(fontWeight: FontWeight.w800),
                         ),
                       ),
                     ],
                   ),
-                ),
-                if (isOnTheWay)
-                  const Icon(Icons.navigation_rounded, color: AppPalette.sky),
-              ],
-            ),
-            const SizedBox(height: 12),
-            _ReportMapPreview(report: report, onTap: onOpenMap),
-            const SizedBox(height: 12),
-            Text(
-              formatAddressLine(report.addressNumber, report.addressDetail),
-              style: const TextStyle(fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '${report.receiverName} | ${report.phoneNumber}',
-              style: const TextStyle(color: AppPalette.muted),
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: onOpenMap,
-                    icon: const Icon(Icons.navigation_rounded),
-                    label: const Text('Dẫn đường'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                if (onUpdate != null)
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: onUpdate,
-                      icon: Icon(
-                        report.status == 'ASSIGNED'
-                            ? Icons.local_shipping_rounded
-                            : Icons.task_alt_rounded,
-                      ),
-                      label: Text(
-                        report.status == 'ASSIGNED'
-                            ? 'Bắt đầu đi lấy'
-                            : 'Hoàn tất',
-                      ),
+                  const SizedBox(height: 13),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppPalette.surfaceMuted.withValues(alpha: 0.65),
+                      borderRadius: BorderRadius.circular(AppRadii.md),
+                    ),
+                    child: Row(
+                      children: [
+                        const CircleAvatar(
+                          radius: 17,
+                          backgroundColor: AppPalette.mintStrong,
+                          foregroundColor: AppPalette.primaryDark,
+                          child: Icon(Icons.person_rounded, size: 18),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                receiver,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              const SizedBox(height: 1),
+                              Text(
+                                phone.isEmpty ? 'Chưa có số điện thoại' : phone,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(color: AppPalette.muted),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (isOnTheWay)
+                          const Tooltip(
+                            message: 'Chuyến đang được thực hiện',
+                            child: Icon(
+                              Icons.near_me_rounded,
+                              color: AppPalette.sky,
+                            ),
+                          ),
+                      ],
                     ),
                   ),
-              ],
+                  const SizedBox(height: 16),
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final stack = constraints.maxWidth < 390;
+                      final hasTwoActions = onUpdate != null;
+                      final buttonWidth = stack || !hasTwoActions
+                          ? constraints.maxWidth
+                          : (constraints.maxWidth - 10) / 2;
+                      return Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        children: [
+                          SizedBox(
+                            width: buttonWidth,
+                            child: OutlinedButton.icon(
+                              onPressed: onOpenMap,
+                              icon: const Icon(Icons.navigation_rounded),
+                              label: const Text('Mở bản đồ'),
+                            ),
+                          ),
+                          if (onUpdate != null)
+                            SizedBox(
+                              width: buttonWidth,
+                              child: FilledButton.icon(
+                                onPressed: onUpdate,
+                                icon: Icon(
+                                  report.status == 'ASSIGNED'
+                                      ? Icons.local_shipping_rounded
+                                      : Icons.task_alt_rounded,
+                                ),
+                                label: Text(
+                                  report.status == 'ASSIGNED'
+                                      ? 'Bắt đầu chuyến'
+                                      : 'Hoàn tất thu gom',
+                                ),
+                              ),
+                            ),
+                        ],
+                      );
+                    },
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -480,17 +817,32 @@ class _ReportMapPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(8),
+    return Semantics(
+      button: true,
+      label: 'Mở bản đồ cho chuyến số ${report.id}',
       child: SizedBox(
-        height: 132,
+        height: 156,
         child: Stack(
+          fit: StackFit.expand,
           children: [
             _CollectorReportMap(report: report, interactive: false),
+            const DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Colors.transparent, Color(0x99082F2B)],
+                  stops: [0.48, 1],
+                ),
+              ),
+            ),
             Positioned.fill(
               child: Material(
                 color: Colors.transparent,
-                child: InkWell(onTap: onTap),
+                child: InkWell(
+                  onTap: onTap,
+                  focusColor: AppPalette.lime.withValues(alpha: 0.14),
+                ),
               ),
             ),
             Positioned(
@@ -500,6 +852,129 @@ class _ReportMapPreview extends StatelessWidget {
                 icon: Icons.local_shipping_rounded,
                 text: statusText(report.status),
               ),
+            ),
+            const Positioned(
+              left: 14,
+              right: 14,
+              bottom: 12,
+              child: Row(
+                children: [
+                  Icon(Icons.map_rounded, color: Colors.white, size: 18),
+                  SizedBox(width: 7),
+                  Text(
+                    'Chạm để xem lộ trình thực tế',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 12,
+                    ),
+                  ),
+                  Spacer(),
+                  Icon(
+                    Icons.arrow_forward_rounded,
+                    color: AppPalette.lime,
+                    size: 19,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+String _collectorCategoryLabel(String name) {
+  switch (name.toUpperCase()) {
+    case 'ORGANIC':
+      return 'Rác hữu cơ';
+    case 'RECYCLABLE':
+      return 'Vật liệu tái chế';
+    case 'HAZARDOUS':
+      return 'Rác nguy hại';
+    case 'OTHER':
+      return 'Rác khác';
+    default:
+      return name.trim().isEmpty ? 'Chưa phân loại' : name;
+  }
+}
+
+IconData _collectorCategoryIcon(String name) {
+  switch (name.toUpperCase()) {
+    case 'ORGANIC':
+      return Icons.compost_rounded;
+    case 'RECYCLABLE':
+      return Icons.recycling_rounded;
+    case 'HAZARDOUS':
+      return Icons.warning_amber_rounded;
+    default:
+      return Icons.delete_sweep_rounded;
+  }
+}
+
+class _CollectorLoadFailure extends StatelessWidget {
+  const _CollectorLoadFailure({
+    required this.title,
+    required this.message,
+    required this.onRetry,
+  });
+
+  final String title;
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      container: true,
+      liveRegion: true,
+      label: '$title. $message',
+      child: AppSurface(
+        color: AppPalette.cream,
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFFFE5D9), AppPalette.cream],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(AppRadii.lg),
+              ),
+              child: const Icon(
+                Icons.cloud_off_rounded,
+                color: AppPalette.coral,
+                size: 32,
+              ),
+            ),
+            const SizedBox(height: 17),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 7),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 480),
+              child: Text(
+                message,
+                textAlign: TextAlign.center,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(color: AppPalette.muted),
+              ),
+            ),
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('Thử tải lại'),
             ),
           ],
         ),
@@ -751,24 +1226,47 @@ class _CollectorNavigationScreenState
               mapController: _mapController,
             ),
             if (_loadingRoute && _route.isEmpty)
-              const ColoredBox(
-                color: Color(0x33FFFFFF),
-                child: Center(child: CircularProgressIndicator()),
+              ColoredBox(
+                color: AppPalette.canvas.withValues(alpha: 0.58),
+                child: const Center(
+                  child: AppSurface(
+                    padding: EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                    shadow: true,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(strokeWidth: 2.5),
+                        ),
+                        SizedBox(width: 12),
+                        Text(
+                          'Đang kết nối GPS…',
+                          style: TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ),
             Positioned(
-              left: 12,
-              right: 12,
-              top: 12 + MediaQuery.paddingOf(context).top,
+              left: 14,
+              right: 14,
+              top: 14 + MediaQuery.paddingOf(context).top,
               child: Center(
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 760),
+                  constraints: const BoxConstraints(maxWidth: 820),
                   child: Row(
                     children: [
                       IconButton.filled(
                         style: IconButton.styleFrom(
-                          backgroundColor: Colors.white,
+                          backgroundColor: AppPalette.surface,
                           foregroundColor: AppPalette.ink,
+                          elevation: 5,
+                          shadowColor: AppPalette.night.withValues(alpha: 0.2),
                         ),
+                        tooltip: 'Quay lại danh sách chuyến',
                         onPressed: () => Navigator.pop(context),
                         icon: const Icon(Icons.arrow_back_rounded),
                       ),
@@ -785,15 +1283,30 @@ class _CollectorNavigationScreenState
                       const SizedBox(width: 10),
                       IconButton.filled(
                         style: IconButton.styleFrom(
-                          backgroundColor: Colors.white,
+                          backgroundColor: AppPalette.surface,
                           foregroundColor: AppPalette.primary,
+                          elevation: 5,
+                          shadowColor: AppPalette.night.withValues(alpha: 0.2),
                         ),
-                        tooltip: 'Theo dõi vị trí của tôi',
-                        onPressed: () {
-                          setState(() => _following = true);
-                          _moveToCurrent();
-                        },
-                        icon: const Icon(Icons.my_location_rounded),
+                        tooltip: _routeError != null || _currentPoint == null
+                            ? 'Thử kết nối lại vị trí'
+                            : 'Theo dõi vị trí của tôi',
+                        onPressed: _loadingRoute
+                            ? null
+                            : () {
+                                setState(() => _following = true);
+                                if (_routeError != null ||
+                                    _currentPoint == null) {
+                                  _startNavigation();
+                                } else {
+                                  _moveToCurrent();
+                                }
+                              },
+                        icon: Icon(
+                          _routeError != null
+                              ? Icons.refresh_rounded
+                              : Icons.my_location_rounded,
+                        ),
                       ),
                     ],
                   ),
@@ -801,12 +1314,12 @@ class _CollectorNavigationScreenState
               ),
             ),
             Positioned(
-              left: 12,
-              right: 12,
-              bottom: 12 + MediaQuery.paddingOf(context).bottom,
+              left: 14,
+              right: 14,
+              bottom: 14 + MediaQuery.paddingOf(context).bottom,
               child: Center(
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 680),
+                  constraints: const BoxConstraints(maxWidth: 720),
                   child: _NavigationBottomPanel(
                     report: report,
                     onUpdate: report.status == 'COLLECTED'
@@ -845,93 +1358,182 @@ class _NavigationBottomPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final address = formatAddressLine(
+      report.addressNumber,
+      report.addressDetail,
+    );
+    final receiver = report.receiverName.trim().isEmpty
+        ? 'Người nhận'
+        : report.receiverName.trim();
+    final phone = report.phoneNumber.trim();
+
     return Material(
-      color: Colors.white,
-      elevation: 10,
-      borderRadius: BorderRadius.circular(8),
+      color: AppPalette.surface.withValues(alpha: 0.97),
+      elevation: 0,
+      borderRadius: BorderRadius.circular(AppRadii.xl),
+      clipBehavior: Clip.antiAlias,
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Align(
+              alignment: Alignment.center,
+              child: Container(
+                width: 42,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppPalette.line,
+                  borderRadius: BorderRadius.circular(AppRadii.pill),
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
             Row(
               children: [
-                Expanded(
-                  child: Text(
-                    'Điểm thu gom #${report.id}',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w900,
-                    ),
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: AppPalette.mint,
+                    borderRadius: BorderRadius.circular(AppRadii.md),
+                  ),
+                  child: Icon(
+                    _collectorCategoryIcon(report.categoryName),
+                    color: AppPalette.primaryDark,
+                    size: 22,
                   ),
                 ),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'ĐIỂM THU GOM #${report.id}',
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: AppPalette.primary,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1.05,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        _collectorCategoryLabel(report.categoryName),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
                 StatusChip(report.status),
               ],
             ),
-            const SizedBox(height: 8),
-            Text(
-              formatAddressLine(report.addressNumber, report.addressDetail),
-              style: const TextStyle(fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                const Icon(
-                  Icons.person_pin_circle_outlined,
-                  color: AppPalette.primary,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    report.receiverName.trim().isEmpty
-                        ? 'Người nhận'
-                        : report.receiverName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w900),
+            const SizedBox(height: 14),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppPalette.cream,
+                borderRadius: BorderRadius.circular(AppRadii.md),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(
+                    Icons.location_on_rounded,
+                    color: AppPalette.coral,
+                    size: 20,
                   ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  report.phoneNumber,
-                  style: const TextStyle(
-                    color: AppPalette.muted,
-                    fontWeight: FontWeight.w700,
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: Text(
+                      address.isEmpty ? 'Chưa có địa chỉ chi tiết' : address,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
             const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
+            Row(
               children: [
-                OutlinedButton.icon(
-                  onPressed: () => _callPhone(context),
-                  icon: const Icon(Icons.call_rounded),
-                  label: const Text('Gọi người nhận'),
+                const CircleAvatar(
+                  radius: 17,
+                  backgroundColor: AppPalette.mintStrong,
+                  foregroundColor: AppPalette.primaryDark,
+                  child: Icon(Icons.person_rounded, size: 18),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        receiver,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w900),
+                      ),
+                      Text(
+                        phone.isEmpty ? 'Chưa có số điện thoại' : phone,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppPalette.muted,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
-            if (onUpdate != null) ...[
-              const SizedBox(height: 12),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: FilledButton.icon(
-                  onPressed: onUpdate,
-                  icon: Icon(
-                    report.status == 'ASSIGNED'
-                        ? Icons.local_shipping_rounded
-                        : Icons.task_alt_rounded,
-                  ),
-                  label: Text(
-                    report.status == 'ASSIGNED'
-                        ? 'Bắt đầu đi lấy'
-                        : 'Hoàn tất thu gom',
-                  ),
-                ),
-              ),
-            ],
+            const SizedBox(height: 15),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final stack = constraints.maxWidth < 390;
+                final hasTwoActions = onUpdate != null;
+                final width = stack || !hasTwoActions
+                    ? constraints.maxWidth
+                    : (constraints.maxWidth - 10) / 2;
+                return Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    SizedBox(
+                      width: width,
+                      child: OutlinedButton.icon(
+                        onPressed: () => _callPhone(context),
+                        icon: const Icon(Icons.call_rounded),
+                        label: const Text('Gọi người nhận'),
+                      ),
+                    ),
+                    if (onUpdate != null)
+                      SizedBox(
+                        width: width,
+                        child: FilledButton.icon(
+                          onPressed: onUpdate,
+                          icon: Icon(
+                            report.status == 'ASSIGNED'
+                                ? Icons.local_shipping_rounded
+                                : Icons.task_alt_rounded,
+                          ),
+                          label: Text(
+                            report.status == 'ASSIGNED'
+                                ? 'Bắt đầu chuyến'
+                                : 'Hoàn tất thu gom',
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
           ],
         ),
       ),
@@ -956,55 +1558,93 @@ class _RouteSummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hasRouteData = distanceMeters != null && durationSeconds != null;
     final text = loading
-        ? 'Đang lấy vị trí hiện tại...'
+        ? 'Đang lấy vị trí hiện tại…'
         : error != null
         ? error!
-        : '${_formatDistance(distanceMeters ?? 0)} | ${_formatDuration(durationSeconds ?? 0)}';
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.94),
-        borderRadius: BorderRadius.circular(8),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
-            blurRadius: 12,
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Icon(
-            error == null ? Icons.navigation_rounded : Icons.info_rounded,
-            color: error == null ? AppPalette.primary : Colors.orange.shade800,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  text,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w900),
-                ),
-                Text(
-                  live ? 'Đang theo dõi GPS realtime' : 'Đang chờ vị trí',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: AppPalette.muted,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
+        : hasRouteData
+        ? '${_formatDistance(distanceMeters!)} · ${_formatDuration(durationSeconds!)}'
+        : 'Chưa có dữ liệu tuyến đường';
+    final detail = error != null
+        ? 'Chạm nút định vị để thử lại'
+        : live
+        ? hasRouteData
+              ? 'GPS trực tiếp · cập nhật theo vị trí thật'
+              : 'Đã có vị trí · đang chờ tuyến đường'
+        : 'Đang chờ quyền truy cập vị trí';
+    final accent = error != null ? AppPalette.coral : AppPalette.primary;
+
+    return Semantics(
+      liveRegion: true,
+      label: '$text. $detail',
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+        decoration: BoxDecoration(
+          color: AppPalette.surface.withValues(alpha: 0.97),
+          borderRadius: BorderRadius.circular(AppRadii.md),
+          border: Border.all(color: AppPalette.line.withValues(alpha: 0.7)),
+          boxShadow: [
+            BoxShadow(
+              color: AppPalette.night.withValues(alpha: 0.13),
+              blurRadius: 24,
+              offset: const Offset(0, 9),
             ),
-          ),
-        ],
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: accent.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(AppRadii.sm),
+              ),
+              child: loading
+                  ? Padding(
+                      padding: const EdgeInsets.all(9),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: accent,
+                      ),
+                    )
+                  : Icon(
+                      error == null
+                          ? Icons.navigation_rounded
+                          : Icons.info_rounded,
+                      color: accent,
+                      size: 20,
+                    ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    text,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(height: 1),
+                  Text(
+                    detail,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppPalette.muted,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

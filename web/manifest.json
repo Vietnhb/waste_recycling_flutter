@@ -1,11 +1,11 @@
 {
-    "name": "waste_recycling_flutter",
-    "short_name": "waste_recycling_flutter",
+    "name": "Tái Chế Xanh",
+    "short_name": "Tái Chế Xanh",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#FFF8EB",
+    "theme_color": "#082F2B",
+    "description": "Nền tảng kết nối cộng đồng với hành trình thu gom và tái chế thông minh.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

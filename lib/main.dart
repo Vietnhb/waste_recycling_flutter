@@ -6,6 +6,7 @@ import 'dart:ui';
 import 'src/controllers/app_controller.dart';
 import 'src/core/firebase_options.dart';
 import 'src/ui/app/waste_app.dart';
+import 'src/ui/shared/app_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,7 +22,7 @@ Future<void> main() async {
   };
   ErrorWidget.builder = (details) {
     return Material(
-      color: const Color(0xFFF7F8F3),
+      color: AppPalette.cream,
       child: Center(
         child: Padding(
           padding: const EdgeInsets.all(20),
@@ -30,13 +31,20 @@ Future<void> main() async {
                 ? details.exceptionAsString()
                 : 'Có lỗi khi tải màn hình. Hãy thử tải lại.',
             textAlign: TextAlign.center,
-            style: const TextStyle(color: Color(0xFF18231C)),
+            style: const TextStyle(color: AppPalette.ink),
           ),
         ),
       ),
     );
   };
-  await Firebase.initializeApp(options: WasteFirebaseOptions.currentPlatform);
+  try {
+    await Firebase.initializeApp(options: WasteFirebaseOptions.currentPlatform);
+  } catch (error, stack) {
+    // The core experience should still open when Firebase is unavailable.
+    // Features that upload media will surface their own actionable error.
+    debugPrint('FIREBASE_INIT_ERROR: $error');
+    debugPrintStack(stackTrace: stack);
+  }
   final controller = AppController();
   await controller.init();
   runApp(WasteApp(controller: controller));

@@ -5,42 +5,428 @@ import 'package:flutter/material.dart';
 import '../../controllers/app_controller.dart';
 import '../../core/json_helpers.dart';
 import '../../models/models.dart';
+import '../profile/profile_screen.dart';
 import '../shared/widgets.dart';
 
 part 'complaints_view.dart';
 part 'users_view.dart';
 
-class AdminScreen extends StatelessWidget {
+class AdminScreen extends StatefulWidget {
   const AdminScreen({super.key, required this.controller});
 
   final AppController controller;
 
   @override
+  State<AdminScreen> createState() => _AdminScreenState();
+}
+
+class _AdminScreenState extends State<AdminScreen> {
+  int _selectedIndex = 0;
+
+  static const _destinations = [
+    (
+      icon: Icons.manage_accounts_outlined,
+      selectedIcon: Icons.manage_accounts_rounded,
+      label: 'Tài khoản',
+      title: 'Quản lý tài khoản',
+      subtitle: 'Kiểm soát quyền truy cập và vai trò trong hệ thống',
+    ),
+    (
+      icon: Icons.mark_unread_chat_alt_outlined,
+      selectedIcon: Icons.mark_unread_chat_alt_rounded,
+      label: 'Khiếu nại',
+      title: 'Trung tâm khiếu nại',
+      subtitle: 'Tiếp nhận và xử lý phản hồi từ cộng đồng',
+    ),
+  ];
+
+  late final List<Widget> _pages = [
+    AdminUsersView(controller: widget.controller),
+    AdminComplaintsView(controller: widget.controller),
+  ];
+
+  Future<void> _openProfile() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ProfileScreen(controller: widget.controller),
+      ),
+    );
+    if (mounted) setState(() {});
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Administrator'),
-          actions: [
-            IconButton(
-              tooltip: 'Đăng xuất',
-              onPressed: () => logoutToHome(context, controller.logout),
-              icon: const Icon(Icons.logout_rounded),
+    final width = MediaQuery.sizeOf(context).width;
+    final showRail = width >= 900;
+    final extendRail = width >= 1220;
+    final destination = _destinations[_selectedIndex];
+
+    return Scaffold(
+      body: SafeArea(
+        bottom: false,
+        child: Row(
+          children: [
+            if (showRail)
+              _AdminNavigationRail(
+                selectedIndex: _selectedIndex,
+                extended: extendRail,
+                user: widget.controller.user,
+                onSelected: (index) => setState(() => _selectedIndex = index),
+                onProfile: _openProfile,
+                onLogout: () => logoutToHome(context, widget.controller.logout),
+              ),
+            Expanded(
+              child: Column(
+                children: [
+                  _AdminTopBar(
+                    icon: destination.selectedIcon,
+                    title: destination.title,
+                    subtitle: destination.subtitle,
+                    user: widget.controller.user,
+                    onProfile: _openProfile,
+                    onLogout: () =>
+                        logoutToHome(context, widget.controller.logout),
+                  ),
+                  const Divider(),
+                  Expanded(
+                    child: AppLazyIndexedStack(
+                      index: _selectedIndex,
+                      children: _pages,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
-          bottom: const TabBar(
-            tabs: [
-              Tab(icon: Icon(Icons.people), text: 'Tài khoản'),
-              Tab(icon: Icon(Icons.report), text: 'Khiếu nại'),
-            ],
-          ),
         ),
-        body: TabBarView(
-          children: [
-            AdminUsersView(controller: controller),
-            AdminComplaintsView(controller: controller),
-          ],
+      ),
+      bottomNavigationBar: showRail
+          ? null
+          : SafeArea(
+              top: false,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: AppPalette.surface,
+                  border: Border(
+                    top: BorderSide(
+                      color: AppPalette.line.withValues(alpha: 0.8),
+                    ),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppPalette.night.withValues(alpha: 0.08),
+                      blurRadius: 24,
+                      offset: const Offset(0, -8),
+                    ),
+                  ],
+                ),
+                child: NavigationBar(
+                  selectedIndex: _selectedIndex,
+                  onDestinationSelected: (index) =>
+                      setState(() => _selectedIndex = index),
+                  destinations: [
+                    for (final item in _destinations)
+                      NavigationDestination(
+                        icon: Icon(item.icon),
+                        selectedIcon: Icon(item.selectedIcon),
+                        label: item.label,
+                      ),
+                  ],
+                ),
+              ),
+            ),
+    );
+  }
+}
+
+class _AdminTopBar extends StatelessWidget {
+  const _AdminTopBar({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.user,
+    required this.onProfile,
+    required this.onLogout,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final User? user;
+  final VoidCallback onProfile;
+  final VoidCallback onLogout;
+
+  @override
+  Widget build(BuildContext context) {
+    final showAccount = MediaQuery.sizeOf(context).width >= 620;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 12, 12, 12),
+      child: Row(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [AppPalette.night, AppPalette.violet],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(AppRadii.md),
+              boxShadow: [
+                BoxShadow(
+                  color: AppPalette.violet.withValues(alpha: 0.22),
+                  blurRadius: 18,
+                  offset: const Offset(0, 7),
+                ),
+              ],
+            ),
+            child: Icon(icon, color: Colors.white, size: 25),
+          ),
+          const SizedBox(width: 13),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'QUẢN TRỊ HỆ THỐNG',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: AppPalette.violet,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.3,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                if (showAccount)
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: AppPalette.muted),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          _AdminAccountButton(
+            user: user,
+            expanded: showAccount,
+            onTap: onProfile,
+          ),
+          IconButton(
+            tooltip: 'Đăng xuất',
+            onPressed: onLogout,
+            icon: const Icon(Icons.logout_rounded),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AdminNavigationRail extends StatelessWidget {
+  const _AdminNavigationRail({
+    required this.selectedIndex,
+    required this.extended,
+    required this.user,
+    required this.onSelected,
+    required this.onProfile,
+    required this.onLogout,
+  });
+
+  final int selectedIndex;
+  final bool extended;
+  final User? user;
+  final ValueChanged<int> onSelected;
+  final VoidCallback onProfile;
+  final VoidCallback onLogout;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: extended ? 272 : 92,
+      decoration: BoxDecoration(
+        color: AppPalette.surface,
+        border: Border(
+          right: BorderSide(color: AppPalette.line.withValues(alpha: 0.8)),
+        ),
+      ),
+      child: Column(
+        children: [
+          Padding(
+            padding: EdgeInsets.fromLTRB(
+              extended ? 20 : 18,
+              18,
+              extended ? 20 : 18,
+              10,
+            ),
+            child: extended
+                ? const Align(
+                    alignment: Alignment.centerLeft,
+                    child: AppWordmark(compact: true),
+                  )
+                : const AppBrandMark(size: 48),
+          ),
+          if (extended)
+            Container(
+              margin: const EdgeInsets.fromLTRB(16, 8, 16, 10),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: AppPalette.violet.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(AppRadii.md),
+              ),
+              child: const Row(
+                children: [
+                  Icon(
+                    Icons.admin_panel_settings_rounded,
+                    color: AppPalette.violet,
+                    size: 20,
+                  ),
+                  SizedBox(width: 9),
+                  Expanded(
+                    child: Text(
+                      'Quản trị viên',
+                      style: TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          Expanded(
+            child: NavigationRail(
+              selectedIndex: selectedIndex,
+              extended: extended,
+              minWidth: 80,
+              minExtendedWidth: 272,
+              groupAlignment: -0.82,
+              labelType: extended
+                  ? NavigationRailLabelType.none
+                  : NavigationRailLabelType.selected,
+              onDestinationSelected: onSelected,
+              destinations: [
+                for (final item in _AdminScreenState._destinations)
+                  NavigationRailDestination(
+                    icon: Icon(item.icon),
+                    selectedIcon: Icon(item.selectedIcon),
+                    label: Text(item.title),
+                  ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+            child: Column(
+              children: [
+                _AdminAccountButton(
+                  user: user,
+                  expanded: extended,
+                  onTap: onProfile,
+                ),
+                const SizedBox(height: 6),
+                if (extended)
+                  SizedBox(
+                    width: double.infinity,
+                    child: TextButton.icon(
+                      onPressed: onLogout,
+                      icon: const Icon(Icons.logout_rounded, size: 19),
+                      label: const Text('Đăng xuất'),
+                    ),
+                  )
+                else
+                  IconButton(
+                    tooltip: 'Đăng xuất',
+                    onPressed: onLogout,
+                    icon: const Icon(Icons.logout_rounded),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AdminAccountButton extends StatelessWidget {
+  const _AdminAccountButton({
+    required this.user,
+    required this.expanded,
+    required this.onTap,
+  });
+
+  final User? user;
+  final bool expanded;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final name = (user?.fullName.trim().isNotEmpty ?? false)
+        ? user!.fullName.trim()
+        : 'Quản trị viên';
+    final initial = name.characters.first.toUpperCase();
+    final avatar = CircleAvatar(
+      radius: 19,
+      backgroundColor: AppPalette.night,
+      foregroundColor: AppPalette.lime,
+      child: Text(initial, style: const TextStyle(fontWeight: FontWeight.w900)),
+    );
+
+    return Tooltip(
+      message: 'Mở hồ sơ cá nhân',
+      child: Material(
+        color: expanded ? AppPalette.surfaceMuted : Colors.transparent,
+        borderRadius: BorderRadius.circular(AppRadii.pill),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(AppRadii.pill),
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(5, 5, expanded ? 12 : 5, 5),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                avatar,
+                if (expanded) ...[
+                  const SizedBox(width: 9),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 132),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        Text(
+                          user?.email ?? 'Hồ sơ cá nhân',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: AppPalette.muted,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
         ),
       ),
     );
