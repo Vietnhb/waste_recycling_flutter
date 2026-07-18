@@ -11,6 +11,7 @@ import '../../features/enterprise/presentation/enterprise_history_view.dart';
 import '../../features/operations/domain/operation_workflow.dart';
 import '../../models/models.dart';
 import '../../services/area_directory.dart';
+import '../../services/realtime_service.dart';
 import '../profile/profile_screen.dart';
 import '../shared/widgets.dart';
 
@@ -43,6 +44,28 @@ class _EnterpriseScreenState extends State<EnterpriseScreen> {
   final _rulesKey = GlobalKey<_PointRulesViewState>();
   final _enterpriseProfileKey = GlobalKey<_EnterpriseProfileViewState>();
   final _historyKey = GlobalKey<EnterpriseHistoryViewState>();
+  StreamSubscription<JsonMap>? _syncSub;
+  Timer? _syncDebounce;
+
+  @override
+  void initState() {
+    super.initState();
+    _syncSub = widget.controller.realtime.events.listen((event) {
+      if (asString(event['type']) != realtimeSyncRequiredEvent) return;
+      _syncDebounce?.cancel();
+      _syncDebounce = Timer(
+        const Duration(milliseconds: 250),
+        _refreshActiveDestination,
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _syncDebounce?.cancel();
+    _syncSub?.cancel();
+    super.dispose();
+  }
 
   static const _destinations = [
     (
@@ -123,6 +146,39 @@ class _EnterpriseScreenState extends State<EnterpriseScreen> {
     ),
     EnterpriseHistoryView(key: _historyKey, controller: widget.controller),
   ];
+
+  void _refreshActiveDestination() {
+    if (!mounted) return;
+    switch (_selectedIndex) {
+      case 0:
+        _homeKey.currentState?._load();
+        break;
+      case 1:
+        _pendingKey.currentState?._load(showLoading: false, showErrors: false);
+        break;
+      case 2:
+        _dispatchKey.currentState?._load(showLoading: false, showErrors: false);
+        break;
+      case 3:
+        _teamKey.currentState?._load(showLoading: false, showErrors: false);
+        break;
+      case 4:
+        _statisticsKey.currentState?._search(
+          showErrors: false,
+          showProgress: false,
+        );
+        break;
+      case 5:
+        _rulesKey.currentState?._load(showLoading: false, showErrors: false);
+        break;
+      case 6:
+        // Do not replace an enterprise form that may contain unsaved edits.
+        break;
+      case 7:
+        _historyKey.currentState?.load(showLoading: false, showErrors: false);
+        break;
+    }
+  }
 
   void _selectPage(int index) {
     final shouldRefresh = _visitedDestinations.contains(index);

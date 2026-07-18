@@ -30,6 +30,7 @@ class _CollectorHomeViewState extends State<CollectorHomeView> {
   int _loadToken = 0;
   Timer? _realtimeDebounce;
   StreamSubscription<JsonMap>? _realtimeSub;
+  _CollectorHomeStatusEcho? _expectedStatusEcho;
 
   @override
   void initState() {
@@ -40,19 +41,64 @@ class _CollectorHomeViewState extends State<CollectorHomeView> {
       if (!type.startsWith('REPORT_') && type != 'COLLECTOR_STATUS_CHANGED') {
         return;
       }
-      _realtimeDebounce?.cancel();
-      _realtimeDebounce = Timer(
-        const Duration(milliseconds: 350),
-        () => _load(showLoading: false, silent: true),
-      );
+      if (!mounted || !appTabIsActive(context)) return;
+      if (_consumeExpectedStatusEcho(event)) return;
+      _scheduleRealtimeRefresh();
     });
   }
 
   @override
   void dispose() {
     _realtimeDebounce?.cancel();
+    _clearExpectedStatusEcho();
     _realtimeSub?.cancel();
     super.dispose();
+  }
+
+  void _scheduleRealtimeRefresh() {
+    _realtimeDebounce?.cancel();
+    _realtimeDebounce = Timer(const Duration(milliseconds: 350), () {
+      if (!mounted || !appTabIsActive(context)) return;
+      _load(showLoading: false, silent: true);
+    });
+  }
+
+  _CollectorHomeStatusEcho _expectStatusEcho(String status) {
+    _clearExpectedStatusEcho();
+    final echo = _CollectorHomeStatusEcho(status);
+    _expectedStatusEcho = echo;
+    return echo;
+  }
+
+  bool _consumeExpectedStatusEcho(JsonMap event) {
+    final echo = _expectedStatusEcho;
+    if (echo == null || !echo.matches(event)) return false;
+    echo.observed = true;
+    if (echo.mutationCompleted) _clearExpectedStatusEcho(echo);
+    return true;
+  }
+
+  void _clearExpectedStatusEcho([_CollectorHomeStatusEcho? echo]) {
+    if (echo != null && !identical(_expectedStatusEcho, echo)) return;
+    _expectedStatusEcho?.expiry?.cancel();
+    _expectedStatusEcho = null;
+  }
+
+  void _finishExpectedStatusEcho(
+    _CollectorHomeStatusEcho echo, {
+    required bool committed,
+  }) {
+    if (!identical(_expectedStatusEcho, echo)) return;
+    if (!committed) {
+      final shouldRefresh = echo.observed;
+      _clearExpectedStatusEcho(echo);
+      if (shouldRefresh) _scheduleRealtimeRefresh();
+      return;
+    }
+    echo.mutationCompleted = true;
+    echo.expiry = Timer(const Duration(seconds: 2), () {
+      if (mounted) _clearExpectedStatusEcho(echo);
+    });
   }
 
   Future<void> _load({bool showLoading = true, bool silent = false}) async {
@@ -124,6 +170,7 @@ class _CollectorHomeViewState extends State<CollectorHomeView> {
       showSnack(context, 'Hãy hoàn tất chuyến đang giao trước khi đổi ca');
       return;
     }
+    final expectedEcho = _expectStatusEcho(status);
     setState(() => _updatingStatus = status);
     try {
       final collector = await widget.controller.api.updateCollectorStatus(
@@ -131,7 +178,9 @@ class _CollectorHomeViewState extends State<CollectorHomeView> {
       );
       if (!mounted) return;
       setState(() => _collector = collector);
+      _finishExpectedStatusEcho(expectedEcho, committed: true);
     } catch (error) {
+      _finishExpectedStatusEcho(expectedEcho, committed: false);
       if (!mounted) return;
       showErrorSnack(context, error);
     } finally {
@@ -326,6 +375,22 @@ class _CollectorHomeViewState extends State<CollectorHomeView> {
   }
 }
 
+class _CollectorHomeStatusEcho {
+  _CollectorHomeStatusEcho(this.status);
+
+  final String status;
+  bool observed = false;
+  bool mutationCompleted = false;
+  Timer? expiry;
+
+  bool matches(JsonMap event) {
+    return asString(event['type']).trim().toUpperCase() ==
+            'COLLECTOR_STATUS_CHANGED' &&
+        asString(event['status']).trim().toUpperCase() ==
+            status.trim().toUpperCase();
+  }
+}
+
 class _CollectorHomeHero extends StatelessWidget {
   const _CollectorHomeHero({
     required this.collector,
@@ -458,7 +523,7 @@ class _CollectorHomeHero extends StatelessWidget {
                                 for (final action in const [
                                   (
                                     value: 'AVAILABLE',
-                                    label: 'Mở nhận việc',
+                                    label: 'Bắt đầu ca',
                                     icon: Icons.bolt_rounded,
                                   ),
                                   (
@@ -469,6 +534,9 @@ class _CollectorHomeHero extends StatelessWidget {
                                 ])
                                   if (action.value != status)
                                     _CollectorHomeStatusAction(
+                                      key: ValueKey(
+                                        'collector-home-status-${action.value}',
+                                      ),
                                       label: action.label,
                                       icon: action.icon,
                                       busy: updatingStatus == action.value,
@@ -638,6 +706,7 @@ class _CollectorHomeStatusBadge extends StatelessWidget {
 
 class _CollectorHomeStatusAction extends StatelessWidget {
   const _CollectorHomeStatusAction({
+    super.key,
     required this.label,
     required this.icon,
     required this.busy,
@@ -778,7 +847,7 @@ class _CollectorHomeNextJob extends StatelessWidget {
         ? report.receiverName.trim()
         : report.citizenName.trim().isNotEmpty
         ? report.citizenName.trim()
-        : 'Người gửi chưa cập nhật tên';
+        : 'Chưa cập nhật người liên hệ';
     final normalizedStatus = _collectorNormalizedStatus(report.status);
     final isFieldActive =
         normalizedStatus == 'ON_THE_WAY' || normalizedStatus == 'IN_PROGRESS';
@@ -880,7 +949,7 @@ class _CollectorHomeNextJob extends StatelessWidget {
                     color: AppPalette.primary,
                     title: receiver,
                     subtitle: report.phoneNumber.trim().isEmpty
-                        ? 'Người bàn giao'
+                        ? 'Người liên hệ'
                         : report.phoneNumber.trim(),
                   ),
                   const SizedBox(height: 14),

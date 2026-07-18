@@ -66,21 +66,35 @@ Future<void> logoutToHome(
   Navigator.of(context, rootNavigator: true).popUntil((route) => route.isFirst);
 }
 
-Future<bool> confirmDialog(BuildContext context, String message) async {
+Future<bool> confirmDialog(
+  BuildContext context,
+  String message, {
+  String title = 'Xác nhận thao tác',
+  String cancelLabel = 'Hủy',
+  String confirmLabel = 'Xác nhận',
+  bool destructive = false,
+}) async {
   final ok = await showDialog<bool>(
     context: context,
     builder: (context) => AlertDialog(
-      icon: const Icon(Icons.help_rounded, color: AppPalette.primary, size: 34),
-      title: const Text('Bạn chắc chắn chứ?', textAlign: TextAlign.center),
+      icon: Icon(
+        destructive ? Icons.delete_outline_rounded : Icons.help_rounded,
+        color: destructive ? AppPalette.danger : AppPalette.primary,
+        size: 34,
+      ),
+      title: Text(title, textAlign: TextAlign.center),
       content: Text(message),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context, false),
-          child: const Text('Hủy'),
+          child: Text(cancelLabel),
         ),
         FilledButton(
+          style: destructive
+              ? FilledButton.styleFrom(backgroundColor: AppPalette.danger)
+              : null,
           onPressed: () => Navigator.pop(context, true),
-          child: const Text('Đồng ý'),
+          child: Text(confirmLabel),
         ),
       ],
     ),
@@ -99,6 +113,7 @@ Widget remoteImage(String? url, {double height = 150}) {
       height: height,
       width: double.infinity,
       fit: BoxFit.cover,
+      cacheWidth: 1200,
       errorBuilder: (_, _, _) => Container(
         height: height,
         alignment: Alignment.center,
@@ -143,11 +158,13 @@ String statusText(String status) {
     case 'INACTIVE':
       return 'Tạm dừng';
     case 'BUSY':
-      return 'Đang bận';
+      return 'Đang có chuyến';
     case 'OFFLINE':
-      return 'Nghỉ';
+      return 'Ngoài ca';
+    case 'RESOLVED':
+      return 'Đã xử lý';
     default:
-      return status;
+      return 'Chưa xác định';
   }
 }
 
@@ -171,13 +188,15 @@ Color statusColor(String status) {
   switch (status.trim().toUpperCase()) {
     case 'ACTIVE':
     case 'AVAILABLE':
+    case 'RESOLVED':
       return AppPalette.jade;
     case 'BUSY':
-    case 'INACTIVE':
       return Colors.orange;
     case 'REJECTED':
-    case 'OFFLINE':
       return Colors.red;
+    case 'INACTIVE':
+    case 'OFFLINE':
+      return AppPalette.muted;
     default:
       return AppPalette.muted;
   }
@@ -204,10 +223,13 @@ IconData statusIcon(String status) {
     case 'AVAILABLE':
     case 'ACTIVE':
       return Icons.play_circle_rounded;
+    case 'RESOLVED':
+      return Icons.check_circle_rounded;
     case 'BUSY':
     case 'INACTIVE':
       return Icons.pause_circle_rounded;
     case 'OFFLINE':
+      return Icons.bedtime_outlined;
     case 'REJECTED':
       return Icons.cancel_rounded;
     default:
@@ -226,38 +248,40 @@ class StatusChip extends StatelessWidget {
     final label = statusText(status);
     return Semantics(
       label: 'Trạng thái: $label',
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(AppRadii.pill),
-          border: Border.all(color: color.withValues(alpha: 0.18)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 7,
-              height: 7,
-              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-            ),
-            const SizedBox(width: 7),
-            Flexible(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: Color.alphaBlend(
-                    color.withValues(alpha: 0.3),
-                    AppPalette.ink,
+      child: ExcludeSemantics(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(AppRadii.pill),
+            border: Border.all(color: color.withValues(alpha: 0.18)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 7,
+                height: 7,
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 7),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Color.alphaBlend(
+                      color.withValues(alpha: 0.3),
+                      AppPalette.ink,
+                    ),
+                    fontWeight: FontWeight.w900,
+                    fontSize: 12,
                   ),
-                  fontWeight: FontWeight.w900,
-                  fontSize: 12,
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -401,15 +425,36 @@ class EmptyState extends StatelessWidget {
   }
 }
 
-class XFilePreview extends StatelessWidget {
+class XFilePreview extends StatefulWidget {
   const XFilePreview({super.key, required this.file});
 
   final XFile file;
 
   @override
+  State<XFilePreview> createState() => _XFilePreviewState();
+}
+
+class _XFilePreviewState extends State<XFilePreview> {
+  late Future<Uint8List> _bytes;
+
+  @override
+  void initState() {
+    super.initState();
+    _bytes = widget.file.readAsBytes();
+  }
+
+  @override
+  void didUpdateWidget(covariant XFilePreview oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.file.path != widget.file.path) {
+      _bytes = widget.file.readAsBytes();
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return FutureBuilder<Uint8List>(
-      future: file.readAsBytes(),
+      future: _bytes,
       builder: (context, snapshot) {
         return ClipRRect(
           borderRadius: BorderRadius.circular(AppRadii.md),
@@ -418,7 +463,11 @@ class XFilePreview extends StatelessWidget {
             height: 104,
             color: AppPalette.mint,
             child: snapshot.hasData
-                ? Image.memory(snapshot.data!, fit: BoxFit.cover)
+                ? Image.memory(
+                    snapshot.data!,
+                    fit: BoxFit.cover,
+                    cacheWidth: 416,
+                  )
                 : const Center(child: CircularProgressIndicator()),
           ),
         );
@@ -450,7 +499,7 @@ class ReportCard extends StatelessWidget {
       case 'RECYCLABLE':
         return 'Tái chế';
       case 'HAZARDOUS':
-        return 'Độc hại';
+        return 'Rác nguy hại';
       case 'OTHER':
         return 'Khác';
       default:
@@ -1021,7 +1070,7 @@ class AppScreenHeader extends StatelessWidget {
 }
 
 class AppLoadingView extends StatelessWidget {
-  const AppLoadingView({super.key, this.label = 'Đang làm mọi thứ xanh hơn…'});
+  const AppLoadingView({super.key, this.label = 'Đang tải…'});
 
   final String label;
 
@@ -1029,35 +1078,41 @@ class AppLoadingView extends StatelessWidget {
   Widget build(BuildContext context) {
     final disableAnimations =
         MediaQuery.maybeOf(context)?.disableAnimations ?? false;
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TweenAnimationBuilder<double>(
-            tween: Tween(begin: disableAnimations ? 1 : 0.92, end: 1),
-            duration: disableAnimations ? Duration.zero : AppMotion.slow,
-            curve: Curves.easeOutBack,
-            builder: (_, scale, child) =>
-                Transform.scale(scale: scale, child: child),
-            child: const AppBrandMark(size: 62),
-          ),
-          const SizedBox(height: 20),
-          Text(
-            label,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: AppPalette.muted,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 16),
-          if (!disableAnimations)
-            const SizedBox(
-              width: 120,
-              child: LinearProgressIndicator(
-                borderRadius: BorderRadius.all(Radius.circular(99)),
+    return Semantics(
+      liveRegion: true,
+      label: label,
+      child: ExcludeSemantics(
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TweenAnimationBuilder<double>(
+                tween: Tween(begin: disableAnimations ? 1 : 0.92, end: 1),
+                duration: disableAnimations ? Duration.zero : AppMotion.slow,
+                curve: Curves.easeOutBack,
+                builder: (_, scale, child) =>
+                    Transform.scale(scale: scale, child: child),
+                child: const AppBrandMark(size: 62),
               ),
-            ),
-        ],
+              const SizedBox(height: 20),
+              Text(
+                label,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: AppPalette.muted,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 16),
+              if (!disableAnimations)
+                const SizedBox(
+                  width: 120,
+                  child: LinearProgressIndicator(
+                    borderRadius: BorderRadius.all(Radius.circular(99)),
+                  ),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1145,10 +1200,28 @@ class _AppLazyIndexedStackState extends State<AppLazyIndexedStack> {
       children: [
         for (var index = 0; index < widget.children.length; index++)
           if (_visited.contains(index))
-            widget.children[index]
+            _AppTabActivity(
+              active: widget.index == index,
+              child: widget.children[index],
+            )
           else
             const SizedBox.shrink(),
       ],
     );
   }
+}
+
+/// Returns whether a page is the visible destination of [AppLazyIndexedStack].
+/// Pages rendered outside that shell are considered active.
+bool appTabIsActive(BuildContext context) =>
+    context.getInheritedWidgetOfExactType<_AppTabActivity>()?.active ?? true;
+
+class _AppTabActivity extends InheritedWidget {
+  const _AppTabActivity({required this.active, required super.child});
+
+  final bool active;
+
+  @override
+  bool updateShouldNotify(_AppTabActivity oldWidget) =>
+      active != oldWidget.active;
 }

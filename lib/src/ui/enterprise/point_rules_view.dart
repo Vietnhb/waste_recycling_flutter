@@ -214,7 +214,13 @@ class _PointRulesViewState extends State<PointRulesView> {
       );
       return;
     }
-    final ok = await confirmDialog(context, 'Xóa quy tắc ${rule.ruleName}?');
+    final ok = await confirmDialog(
+      context,
+      'Quy tắc “${rule.ruleName}” sẽ bị xóa và không thể khôi phục.',
+      title: 'Xóa quy tắc?',
+      confirmLabel: 'Xóa quy tắc',
+      destructive: true,
+    );
     if (!ok) return;
     setState(() => _busyRuleIds.add(rule.id));
     try {
@@ -244,7 +250,7 @@ class _PointRulesViewState extends State<PointRulesView> {
       case 'ELECTRONIC':
         return 'Điện tử';
       case 'HAZARDOUS':
-        return 'Độc hại';
+        return 'Rác nguy hại';
       case 'BULKY':
         return 'Cồng kềnh';
       case 'MEDICAL':
@@ -315,7 +321,7 @@ class _PointRulesViewState extends State<PointRulesView> {
                       ],
                       SectionTitle(
                         'Điểm xanh có chủ đích',
-                        eyebrow: 'THIẾT KẾ ĐỘNG LỰC',
+                        eyebrow: 'QUY TẮC GHI NHẬN',
                         subtitle:
                             'Biến mỗi hành động phân loại đúng thành một tín hiệu tích cực, rõ ràng và nhất quán.',
                         action: IconButton(
@@ -418,7 +424,7 @@ class _PointRulesViewState extends State<PointRulesView> {
       ),
       (
         value: averageBase.toStringAsFixed(1),
-        label: 'Điểm cơ bản TB',
+        label: 'Điểm cơ bản trung bình',
         icon: Icons.stars_rounded,
         color: AppPalette.amber,
       ),

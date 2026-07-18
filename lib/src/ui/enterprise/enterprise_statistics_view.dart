@@ -53,7 +53,10 @@ class _EnterpriseStatisticsViewState extends State<EnterpriseStatisticsView> {
     }
   }
 
-  Future<void> _search({bool showErrors = true}) async {
+  Future<void> _search({
+    bool showErrors = true,
+    bool showProgress = true,
+  }) async {
     if (_startDate != null &&
         _endDate != null &&
         _startDate!.compareTo(_endDate!) > 0) {
@@ -61,7 +64,7 @@ class _EnterpriseStatisticsViewState extends State<EnterpriseStatisticsView> {
       return;
     }
     final request = ++_searchRequest;
-    setState(() => _searching = true);
+    if (showProgress) setState(() => _searching = true);
     try {
       final stats = await widget.controller.api.getWasteStatistics(
         categoryId: _categoryId,
@@ -81,7 +84,7 @@ class _EnterpriseStatisticsViewState extends State<EnterpriseStatisticsView> {
       setState(() => _error = friendlyError(e));
       if (showErrors) showErrorSnack(context, e);
     } finally {
-      if (mounted && request == _searchRequest) {
+      if (mounted && request == _searchRequest && _searching) {
         setState(() => _searching = false);
       }
     }
@@ -184,7 +187,7 @@ class _EnterpriseStatisticsViewState extends State<EnterpriseStatisticsView> {
                       ],
                       SectionTitle(
                         'Bức tranh vận hành',
-                        eyebrow: 'DỮ LIỆU CÓ Ý NGHĨA',
+                        eyebrow: 'KẾT QUẢ TỔNG HỢP',
                         subtitle:
                             'Đọc khối lượng, độ chính xác và nhu cầu theo từng khu vực để tối ưu năng lực.',
                         action: IconButton(
@@ -202,7 +205,7 @@ class _EnterpriseStatisticsViewState extends State<EnterpriseStatisticsView> {
                       const SizedBox(height: 28),
                       SectionTitle(
                         'Lọc góc nhìn',
-                        eyebrow: 'BỘ LỌC PHÂN TÍCH',
+                        eyebrow: 'BỘ LỌC',
                         subtitle: activeFilterCount == 0
                             ? 'Đang hiển thị toàn bộ dữ liệu có sẵn'
                             : '$activeFilterCount điều kiện đang được áp dụng',
@@ -379,7 +382,7 @@ class _EnterpriseStatisticsViewState extends State<EnterpriseStatisticsView> {
                                             ),
                                       label: Text(
                                         _searching
-                                            ? 'Đang phân tích…'
+                                            ? 'Đang tải…'
                                             : 'Áp dụng bộ lọc',
                                       ),
                                     ),
@@ -403,7 +406,7 @@ class _EnterpriseStatisticsViewState extends State<EnterpriseStatisticsView> {
                       const SizedBox(height: 30),
                       SectionTitle(
                         'Chi tiết theo khu vực',
-                        eyebrow: 'PHÂN RÃ DỮ LIỆU',
+                        eyebrow: 'CHI TIẾT THEO KHU VỰC',
                         subtitle:
                             '${_stats.length} nhóm thống kê được tìm thấy',
                       ),
@@ -455,7 +458,7 @@ class _EnterpriseStatisticsViewState extends State<EnterpriseStatisticsView> {
     final metrics = [
       (
         value: '$totalReports',
-        label: 'Báo cáo',
+        label: 'Yêu cầu',
         icon: Icons.receipt_long_rounded,
         color: AppPalette.violet,
       ),
@@ -473,7 +476,7 @@ class _EnterpriseStatisticsViewState extends State<EnterpriseStatisticsView> {
       ),
       (
         value: '${_stats.length}',
-        label: 'Nhóm dữ liệu',
+        label: 'Nhóm thống kê',
         icon: Icons.grid_view_rounded,
         color: AppPalette.amber,
       ),
@@ -554,15 +557,48 @@ class _EnterpriseStatisticsViewState extends State<EnterpriseStatisticsView> {
     );
   }
 
+  String _statisticsCategoryLabel(String name) {
+    switch (name.trim().toUpperCase()) {
+      case 'ORGANIC':
+        return 'Rác hữu cơ';
+      case 'RECYCLABLE':
+        return 'Vật liệu tái chế';
+      case 'PLASTIC':
+        return 'Nhựa';
+      case 'PAPER':
+        return 'Giấy';
+      case 'METAL':
+        return 'Kim loại';
+      case 'GLASS':
+        return 'Thủy tinh';
+      case 'ELECTRONIC':
+        return 'Thiết bị điện tử';
+      case 'HAZARDOUS':
+        return 'Rác nguy hại';
+      case 'BULKY':
+        return 'Rác cồng kềnh';
+      case 'MEDICAL':
+        return 'Rác y tế';
+      case 'OTHER':
+        return 'Rác khác';
+      default:
+        return safeVietnameseUserText(name, maxLength: 48) ??
+            'Loại chưa xác định';
+    }
+  }
+
   Widget _buildStatCard(WasteStatistics stat, AreaDirectory? areas) {
     final ratio = stat.totalReports == 0
         ? 0.0
         : (stat.correctlyClassifiedCount / stat.totalReports)
               .clamp(0.0, 1.0)
               .toDouble();
-    final region =
-        '${areas?.wardName(stat.provinceCode, stat.wardCode) ?? stat.wardCode}, '
-        '${areas?.provinceName(stat.provinceCode) ?? stat.provinceCode}';
+    final province = areas?.provinceByCode(stat.provinceCode);
+    final ward = areas?.wardByCode(stat.provinceCode, stat.wardCode);
+    final region = [
+      if (ward != null) ward.fullName,
+      if (province != null) province.fullName,
+    ].join(', ');
     return AppSurface(
       padding: const EdgeInsets.all(18),
       child: Column(
@@ -592,7 +628,7 @@ class _EnterpriseStatisticsViewState extends State<EnterpriseStatisticsView> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      stat.categoryName,
+                      _statisticsCategoryLabel(stat.categoryName),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
@@ -610,7 +646,7 @@ class _EnterpriseStatisticsViewState extends State<EnterpriseStatisticsView> {
                         const SizedBox(width: 4),
                         Expanded(
                           child: Text(
-                            region,
+                            region.isEmpty ? 'Khu vực chưa cập nhật' : region,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: Theme.of(context).textTheme.bodySmall
@@ -628,7 +664,7 @@ class _EnterpriseStatisticsViewState extends State<EnterpriseStatisticsView> {
           Row(
             children: [
               Expanded(
-                child: _buildInlineMetric('${stat.totalReports}', 'báo cáo'),
+                child: _buildInlineMetric('${stat.totalReports}', 'yêu cầu'),
               ),
               Container(width: 1, height: 34, color: AppPalette.line),
               Expanded(

@@ -20,6 +20,7 @@ class _PendingReportsViewState extends State<PendingReportsView> {
   String? _error;
   int _loadRequest = 0;
   StreamSubscription<JsonMap>? _realtimeSub;
+  Timer? _realtimeDebounce;
 
   @override
   void initState() {
@@ -30,13 +31,19 @@ class _PendingReportsViewState extends State<PendingReportsView> {
       if (type == 'REPORT_CREATED' ||
           type == 'REPORT_ACCEPTED' ||
           type == 'REPORT_REJECTED') {
-        _load(showLoading: false, showErrors: false);
+        if (!mounted || !appTabIsActive(context)) return;
+        _realtimeDebounce?.cancel();
+        _realtimeDebounce = Timer(
+          const Duration(milliseconds: 350),
+          () => _load(showLoading: false, showErrors: false),
+        );
       }
     });
   }
 
   @override
   void dispose() {
+    _realtimeDebounce?.cancel();
     _realtimeSub?.cancel();
     super.dispose();
   }
@@ -102,14 +109,9 @@ class _PendingReportsViewState extends State<PendingReportsView> {
         _reports = _reports.where((item) => item.id != report.id).toList();
         _selectedRules.remove(report.id);
       });
-      final refreshed = await _load(showLoading: false, showErrors: false);
+      await _load(showLoading: false, showErrors: false);
       if (!mounted) return;
-      showSnack(
-        context,
-        refreshed
-            ? 'Đã tiếp nhận yêu cầu thu gom #${report.id}'
-            : 'Đã tiếp nhận yêu cầu #${report.id}. Danh sách sẽ đồng bộ khi tải lại.',
-      );
+      showSnack(context, 'Đã tiếp nhận yêu cầu thu gom #${report.id}');
     } catch (e) {
       if (!mounted) return;
       showErrorSnack(context, e);
@@ -149,20 +151,28 @@ class _PendingReportsViewState extends State<PendingReportsView> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final horizontalPadding = constraints.maxWidth >= 900 ? 28.0 : 16.0;
+        final unclampedContentWidth =
+            constraints.maxWidth - (horizontalPadding * 2);
+        final contentWidth = unclampedContentWidth > 1180
+            ? 1180.0
+            : unclampedContentWidth;
+        final sidePadding = (constraints.maxWidth - contentWidth) / 2;
         return RefreshIndicator(
           onRefresh: _load,
-          child: ListView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: EdgeInsets.fromLTRB(
-              horizontalPadding,
-              22,
-              horizontalPadding,
-              40,
+          child: CustomScrollView(
+            key: const PageStorageKey<String>(
+              'enterprise-pending-reports-scroll',
             ),
-            children: [
-              Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1180),
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              SliverPadding(
+                padding: EdgeInsets.fromLTRB(
+                  sidePadding,
+                  22,
+                  sidePadding,
+                  _reports.isNotEmpty ? 0 : 40,
+                ),
+                sliver: SliverToBoxAdapter(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -172,7 +182,7 @@ class _PendingReportsViewState extends State<PendingReportsView> {
                       ],
                       SectionTitle(
                         'Yêu cầu quanh vùng',
-                        eyebrow: 'TIẾP NHẬN THÔNG MINH',
+                        eyebrow: 'YÊU CẦU PHÙ HỢP',
                         subtitle:
                             'Đối chiếu vật liệu, khu vực phục vụ và quy tắc điểm trước khi cam kết nhận chuyến.',
                         action: IconButton(
@@ -182,7 +192,7 @@ class _PendingReportsViewState extends State<PendingReportsView> {
                         ),
                       ),
                       _buildMetrics(
-                        constraints.maxWidth,
+                        contentWidth,
                         coveredReports: coveredReports,
                         categoryCount: categoryCount,
                         fullyMatchedReports: fullyMatchedReports,
@@ -254,42 +264,33 @@ class _PendingReportsViewState extends State<PendingReportsView> {
                         'Hàng chờ mới',
                         eyebrow: 'CẦN QUYẾT ĐỊNH',
                         subtitle:
-                            '${_reports.length} yêu cầu khả dụng · xếp theo độ phù hợp rồi thời gian chờ',
+                            '${_reports.length} yêu cầu đang chờ · ưu tiên mức độ phù hợp và thời gian gửi',
                       ),
                       if (_reports.isEmpty)
                         const EmptyState(
-                          'Yêu cầu mới sẽ tự động xuất hiện tại đây khi người dân gửi báo cáo.',
+                          'Yêu cầu mới sẽ xuất hiện tại đây khi phù hợp với khu vực phục vụ.',
                           icon: Icons.notifications_active_rounded,
-                          title: 'Khu vực đã được xử lý gọn gàng',
-                        )
-                      else
-                        LayoutBuilder(
-                          builder: (context, listConstraints) {
-                            final twoColumns = listConstraints.maxWidth >= 900;
-                            final cardWidth = twoColumns
-                                ? (listConstraints.maxWidth - 16) / 2
-                                : listConstraints.maxWidth;
-                            return Wrap(
-                              spacing: 16,
-                              runSpacing: 2,
-                              children: [
-                                for (final report in _reports)
-                                  SizedBox(
-                                    width: cardWidth,
-                                    child: ReportCard(
-                                      report: report,
-                                      addressOverride: _marketplaceArea(report),
-                                      trailing: _buildAcceptancePanel(report),
-                                    ),
-                                  ),
-                              ],
-                            );
-                          },
+                          title: 'Chưa có yêu cầu phù hợp',
                         ),
                     ],
                   ),
                 ),
               ),
+              if (_reports.isNotEmpty)
+                SliverPadding(
+                  padding: EdgeInsets.fromLTRB(sidePadding, 0, sidePadding, 40),
+                  sliver: _EnterpriseLazyCardSliver<WasteReport>(
+                    items: _reports,
+                    availableWidth: contentWidth,
+                    twoColumnBreakpoint: 900,
+                    itemKey: (report) => report.id,
+                    itemBuilder: (report) => ReportCard(
+                      report: report,
+                      addressOverride: _marketplaceArea(report),
+                      trailing: _buildAcceptancePanel(report),
+                    ),
+                  ),
+                ),
             ],
           ),
         );
@@ -324,7 +325,7 @@ class _PendingReportsViewState extends State<PendingReportsView> {
       ),
       (
         value: '$fullyMatchedReports',
-        label: 'Khớp hoàn toàn',
+        label: 'Đủ điều kiện tiếp nhận',
         icon: Icons.task_alt_rounded,
         color: AppPalette.amber,
       ),
@@ -485,7 +486,7 @@ class _PendingReportsViewState extends State<PendingReportsView> {
             icon: Icons.stars_rounded,
           ),
           hint: Text(
-            rules.isEmpty ? 'Không có quy tắc khả dụng' : 'Chọn quy tắc',
+            rules.isEmpty ? 'Chưa có quy tắc phù hợp' : 'Chọn quy tắc',
           ),
           items: rules
               .map(
@@ -541,12 +542,77 @@ class _PendingReportsViewState extends State<PendingReportsView> {
 
   String _marketplaceArea(WasteReport report) {
     final areas = _areas;
-    if (areas == null) return 'Khu vực mã ${report.provinceCode}';
+    if (areas == null) return 'Khu vực chưa cập nhật';
     final province = areas.provinceByCode(report.provinceCode);
-    if (province == null) return 'Khu vực mã ${report.provinceCode}';
+    if (province == null) return 'Khu vực chưa cập nhật';
     final ward = areas.wardByCode(report.provinceCode, report.wardCode);
     return ward == null
         ? province.fullName
         : '${ward.fullName}, ${province.fullName}';
+  }
+}
+
+class _EnterpriseLazyCardSliver<T> extends StatelessWidget {
+  const _EnterpriseLazyCardSliver({
+    required this.items,
+    required this.availableWidth,
+    required this.twoColumnBreakpoint,
+    required this.itemKey,
+    required this.itemBuilder,
+    this.columnSpacing = 16,
+    this.rowSpacing = 2,
+  });
+
+  final List<T> items;
+  final double availableWidth;
+  final double twoColumnBreakpoint;
+  final Object Function(T item) itemKey;
+  final Widget Function(T item) itemBuilder;
+  final double columnSpacing;
+  final double rowSpacing;
+
+  @override
+  Widget build(BuildContext context) {
+    final twoColumns =
+        availableWidth >= twoColumnBreakpoint &&
+        MediaQuery.textScalerOf(context).scale(1) <= 1.35;
+    final columnCount = twoColumns ? 2 : 1;
+    final rowCount = (items.length + columnCount - 1) ~/ columnCount;
+
+    Widget cardAt(int index) {
+      final item = items[index];
+      return KeyedSubtree(
+        key: ValueKey(itemKey(item)),
+        child: itemBuilder(item),
+      );
+    }
+
+    return SliverList(
+      delegate: SliverChildBuilderDelegate((context, rowIndex) {
+        final firstIndex = rowIndex * columnCount;
+        if (!twoColumns) {
+          return Padding(
+            padding: EdgeInsets.only(bottom: rowSpacing),
+            child: cardAt(firstIndex),
+          );
+        }
+        final secondIndex = firstIndex + 1;
+        return Padding(
+          padding: EdgeInsets.only(bottom: rowSpacing),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: cardAt(firstIndex)),
+              SizedBox(width: columnSpacing),
+              Expanded(
+                child: secondIndex < items.length
+                    ? cardAt(secondIndex)
+                    : const SizedBox.shrink(),
+              ),
+            ],
+          ),
+        );
+      }, childCount: rowCount),
+    );
   }
 }

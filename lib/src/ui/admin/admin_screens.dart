@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../controllers/app_controller.dart';
 import '../../core/json_helpers.dart';
 import '../../models/models.dart';
+import '../../services/realtime_service.dart';
 import '../profile/profile_screen.dart';
 import '../shared/widgets.dart';
 
@@ -23,7 +24,32 @@ class AdminScreen extends StatefulWidget {
 
 class _AdminScreenState extends State<AdminScreen> {
   int _selectedIndex = 0;
+  final Set<int> _visitedDestinations = {0};
   final _homeKey = GlobalKey<_AdminHomeViewState>();
+  final _usersKey = GlobalKey<_AdminUsersViewState>();
+  final _complaintsKey = GlobalKey<_AdminComplaintsViewState>();
+  StreamSubscription<JsonMap>? _syncSub;
+  Timer? _syncDebounce;
+
+  @override
+  void initState() {
+    super.initState();
+    _syncSub = widget.controller.realtime.events.listen((event) {
+      if (asString(event['type']) != realtimeSyncRequiredEvent) return;
+      _syncDebounce?.cancel();
+      _syncDebounce = Timer(
+        const Duration(milliseconds: 250),
+        _refreshActiveDestination,
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _syncDebounce?.cancel();
+    _syncSub?.cancel();
+    super.dispose();
+  }
 
   static const _destinations = [
     (
@@ -55,22 +81,43 @@ class _AdminScreenState extends State<AdminScreen> {
       controller: widget.controller,
       onNavigate: _selectDestination,
     ),
-    AdminUsersView(controller: widget.controller),
-    AdminComplaintsView(controller: widget.controller),
+    AdminUsersView(key: _usersKey, controller: widget.controller),
+    AdminComplaintsView(key: _complaintsKey, controller: widget.controller),
   ];
 
-  void _selectDestination(int index) {
-    if (_selectedIndex == index) {
-      if (index == 0) _homeKey.currentState?.refresh();
-      return;
+  void _refreshActiveDestination() {
+    if (!mounted) return;
+    switch (_selectedIndex) {
+      case 0:
+        _homeKey.currentState?._load(showLoader: false, silent: true);
+        break;
+      case 1:
+        _usersKey.currentState?._load(showLoading: false);
+        break;
+      case 2:
+        _complaintsKey.currentState?._load(showLoading: false, silent: true);
+        break;
     }
+  }
+
+  void _selectDestination(int index) {
+    if (_selectedIndex == index) return;
+    final shouldRefresh = _visitedDestinations.contains(index);
+    _visitedDestinations.add(index);
     setState(() => _selectedIndex = index);
-    if (index == 0) _homeKey.currentState?.refresh();
+    if (!shouldRefresh) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _selectedIndex != index) return;
+      if (index == 0) _homeKey.currentState?.refresh();
+      if (index == 2) {
+        _complaintsKey.currentState?._load(showLoading: false, silent: true);
+      }
+    });
   }
 
   void _handlePopInvoked(bool didPop, Object? result) {
     if (didPop || _selectedIndex == 0) return;
-    setState(() => _selectedIndex = 0);
+    _selectDestination(0);
   }
 
   Future<void> _openProfile() async {

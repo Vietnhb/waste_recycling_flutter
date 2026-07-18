@@ -29,10 +29,13 @@ class _AddressManagementViewState extends State<AddressManagementView> {
   String _wardCode = '';
   bool _isDefault = false;
   bool _loading = true;
+  bool _hasLoaded = false;
   bool _ignoreNextMapMoveEnd = false;
   bool _showForm = false;
+  String? _loadError;
   int? _editingId;
   LatLng? _location;
+  int _loadRequest = 0;
   int _locationRequest = 0;
 
   @override
@@ -50,23 +53,32 @@ class _AddressManagementViewState extends State<AddressManagementView> {
     super.dispose();
   }
 
-  Future<void> _load() async {
-    setState(() => _loading = true);
+  Future<void> _load({bool showLoading = true}) async {
+    final request = ++_loadRequest;
+    if (showLoading && !_hasLoaded) setState(() => _loading = true);
     try {
       final results = await Future.wait([
         widget.controller.api.getAddresses(),
         AreaDirectory.load(api: widget.controller.api),
       ]);
-      if (!mounted) return;
+      if (!mounted || request != _loadRequest) return;
       setState(() {
         _addresses = results[0] as List<UserAddress>;
         _areas = results[1] as AreaDirectory;
+        _hasLoaded = true;
+        _loadError = null;
       });
     } catch (e) {
-      if (!mounted) return;
-      showErrorSnack(context, e);
+      if (!mounted || request != _loadRequest) return;
+      setState(() {
+        _loadError = _hasLoaded
+            ? 'Chưa thể cập nhật điểm hẹn mới nhất. Danh sách gần nhất vẫn được giữ lại.'
+            : 'Không thể tải các điểm hẹn. Kiểm tra kết nối rồi thử lại.';
+      });
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && request == _loadRequest && showLoading) {
+        setState(() => _loading = false);
+      }
     }
   }
 
@@ -156,7 +168,13 @@ class _AddressManagementViewState extends State<AddressManagementView> {
   }
 
   Future<void> _delete(int id) async {
-    final ok = await confirmDialog(context, 'Xóa địa chỉ này?');
+    final ok = await confirmDialog(
+      context,
+      'Địa chỉ sẽ bị xóa khỏi các lần tạo yêu cầu tiếp theo.',
+      title: 'Xóa địa chỉ?',
+      confirmLabel: 'Xóa địa chỉ',
+      destructive: true,
+    );
     if (!ok) return;
     try {
       await widget.controller.api.deleteAddress(id);
@@ -309,7 +327,18 @@ class _AddressManagementViewState extends State<AddressManagementView> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_loading && !_hasLoaded) {
+      return const AppLoadingView(label: 'Đang mở các điểm hẹn…');
+    }
+    if (!_hasLoaded) {
+      return _CitizenDataLoadFailure(
+        title: 'Chưa mở được điểm hẹn',
+        message:
+            _loadError ??
+            'Không thể tải các điểm hẹn. Kiểm tra kết nối rồi thử lại.',
+        onRetry: _load,
+      );
+    }
     final areas = _areas;
     final province = areas?.provinceByCode(_provinceCode);
     return RefreshIndicator(
@@ -318,6 +347,10 @@ class _AddressManagementViewState extends State<AddressManagementView> {
         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
         children: [
+          if (_loadError case final error?) ...[
+            _CitizenDataRefreshWarning(message: error, onRetry: _load),
+            const SizedBox(height: 12),
+          ],
           _AddressHero(
             count: _addresses.length,
             editing: _showForm,

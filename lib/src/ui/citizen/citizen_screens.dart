@@ -14,11 +14,13 @@ import 'package:latlong2/latlong.dart';
 import 'package:flutter/semantics.dart';
 
 import '../../controllers/app_controller.dart';
+import '../../core/error_helpers.dart';
 import '../../core/json_helpers.dart';
 import '../../core/map_config.dart';
 import '../../models/models.dart';
 import '../../services/area_directory.dart';
 import '../../services/image_upload_service.dart';
+import '../../services/realtime_service.dart';
 import '../profile/profile_screen.dart';
 import '../shared/widgets.dart';
 
@@ -42,24 +44,45 @@ class _CitizenScreenState extends State<CitizenScreen> {
   static const _extendedRailBreakpoint = 1220.0;
 
   int _selectedIndex = 0;
-  int _addressRevision = 0;
-  int _reportRevision = 0;
+  final Set<int> _visitedDestinations = {0};
+  final _homeKey = GlobalKey<_CitizenHomeViewState>();
+  final _reportsKey = GlobalKey<_MyReportsViewState>();
   final _reportComposerKey = GlobalKey<_ReportWasteViewState>();
   final _rankingKey = GlobalKey<_RankingViewState>();
+  final _addressKey = GlobalKey<_AddressManagementViewState>();
+  StreamSubscription<JsonMap>? _syncSub;
+  Timer? _syncDebounce;
+
+  @override
+  void initState() {
+    super.initState();
+    _syncSub = widget.controller.realtime.events.listen((event) {
+      if (asString(event['type']) != realtimeSyncRequiredEvent) return;
+      _syncDebounce?.cancel();
+      _syncDebounce = Timer(
+        const Duration(milliseconds: 250),
+        _refreshActiveDestination,
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _syncDebounce?.cancel();
+    _syncSub?.cancel();
+    super.dispose();
+  }
 
   List<Widget> get _pages => [
     CitizenHomeView(
-      key: ValueKey('citizen-home-$_addressRevision-$_reportRevision'),
+      key: _homeKey,
       controller: widget.controller,
       onCreateReport: () => _selectPage(2),
       onOpenReports: () => _selectPage(1),
       onOpenRanking: () => _selectPage(3),
       onOpenAddresses: () => _selectPage(4),
     ),
-    MyReportsView(
-      key: ValueKey('citizen-reports-$_reportRevision'),
-      controller: widget.controller,
-    ),
+    MyReportsView(key: _reportsKey, controller: widget.controller),
     ReportWasteView(
       key: _reportComposerKey,
       controller: widget.controller,
@@ -73,28 +96,67 @@ class _CitizenScreenState extends State<CitizenScreen> {
       onCreateReport: () => _selectPage(2),
     ),
     AddressManagementView(
+      key: _addressKey,
       controller: widget.controller,
       onChanged: _handleAddressChanged,
     ),
   ];
 
-  void _selectPage(int index) {
-    final previousIndex = _selectedIndex;
-    setState(() => _selectedIndex = index);
-    if (index == 3 && previousIndex != 3) {
-      final ranking = _rankingKey.currentState;
-      if (ranking != null) unawaited(ranking._refresh());
+  void _refreshActiveDestination() {
+    if (!mounted) return;
+    switch (_selectedIndex) {
+      case 0:
+        unawaited(_homeKey.currentState?._load(silent: true));
+        break;
+      case 1:
+        unawaited(_reportsKey.currentState?._load(silent: true));
+        break;
+      case 2:
+        unawaited(_reportComposerKey.currentState?._load(silent: true));
+        break;
+      case 3:
+        unawaited(_rankingKey.currentState?._refresh());
+        break;
+      case 4:
+        unawaited(_addressKey.currentState?._load(showLoading: false));
+        break;
     }
   }
 
+  void _selectPage(int index) {
+    if (_selectedIndex == index) return;
+    final shouldRefresh = _visitedDestinations.contains(index);
+    _visitedDestinations.add(index);
+    setState(() => _selectedIndex = index);
+    // A newly created lazy page already loads in initState. Only refresh pages
+    // that have been visited before, otherwise the first navigation issues the
+    // same request twice and can visibly reorder the result.
+    if (!shouldRefresh) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _selectedIndex != index) return;
+      switch (index) {
+        case 0:
+          unawaited(_homeKey.currentState?._load(silent: true));
+          break;
+        case 1:
+          unawaited(_reportsKey.currentState?._load(silent: true));
+          break;
+        case 3:
+          unawaited(_rankingKey.currentState?._refresh());
+          break;
+      }
+    });
+  }
+
   void _handleAddressChanged() {
-    setState(() => _addressRevision++);
+    unawaited(_homeKey.currentState?._load(silent: true));
     final composer = _reportComposerKey.currentState;
     if (composer != null) unawaited(composer._load(silent: true));
   }
 
   void _handleReportCreated() {
-    setState(() => _reportRevision++);
+    unawaited(_homeKey.currentState?._load(silent: true));
+    unawaited(_reportsKey.currentState?._load(silent: true));
   }
 
   void _handlePopInvoked(bool didPop, Object? result) {
@@ -136,7 +198,7 @@ class _CitizenScreenState extends State<CitizenScreen> {
             : Semantics(
                 button: true,
                 selected: _selectedIndex == 2,
-                label: 'Tạo báo cáo rác mới',
+                label: 'Tạo yêu cầu thu gom mới',
                 child: SizedBox(
                   width: 68,
                   height: 68,
@@ -190,7 +252,7 @@ class _CitizenNavigationRail extends StatelessWidget {
       selectedIcon: Icons.home_rounded,
     ),
     (
-      label: 'Báo cáo',
+      label: 'Yêu cầu',
       icon: Icons.receipt_long_outlined,
       selectedIcon: Icons.receipt_long_rounded,
     ),
@@ -305,7 +367,7 @@ class _CitizenReportRailAction extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Semantics(
-      label: 'Tạo báo cáo rác mới',
+      label: 'Tạo yêu cầu thu gom mới',
       button: true,
       selected: selected,
       child: AnimatedContainer(
@@ -369,7 +431,7 @@ class _CitizenBottomBar extends StatelessWidget {
               onTap: () => onSelected(0),
             ),
             _CitizenNavItem(
-              label: 'Báo cáo',
+              label: 'Yêu cầu',
               icon: Icons.receipt_long_outlined,
               selectedIcon: Icons.receipt_long_rounded,
               selected: selectedIndex == 1,

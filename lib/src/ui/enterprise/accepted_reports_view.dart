@@ -34,6 +34,7 @@ class _AcceptedReportsViewState extends State<AcceptedReportsView> {
           type == 'REPORT_STATUS_CHANGED' ||
           type == 'REPORT_COLLECTED' ||
           type == 'COLLECTOR_STATUS_CHANGED') {
+        if (!mounted || !appTabIsActive(context)) return;
         _reloadTimer?.cancel();
         _reloadTimer = Timer(
           const Duration(milliseconds: 350),
@@ -151,7 +152,7 @@ class _AcceptedReportsViewState extends State<AcceptedReportsView> {
   @override
   Widget build(BuildContext context) {
     if (_loading && !_hasLoaded) {
-      return const AppLoadingView(label: 'Đang dựng bảng điều phối…');
+      return const AppLoadingView(label: 'Đang tải danh sách điều phối…');
     }
     if (!_hasLoaded) {
       return _EnterpriseDataErrorView(
@@ -192,20 +193,28 @@ class _AcceptedReportsViewState extends State<AcceptedReportsView> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final horizontalPadding = constraints.maxWidth >= 900 ? 28.0 : 16.0;
+        final unclampedContentWidth =
+            constraints.maxWidth - (horizontalPadding * 2);
+        final contentWidth = unclampedContentWidth > 1180
+            ? 1180.0
+            : unclampedContentWidth;
+        final sidePadding = (constraints.maxWidth - contentWidth) / 2;
         return RefreshIndicator(
           onRefresh: _load,
-          child: ListView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: EdgeInsets.fromLTRB(
-              horizontalPadding,
-              22,
-              horizontalPadding,
-              40,
+          child: CustomScrollView(
+            key: const PageStorageKey<String>(
+              'enterprise-accepted-reports-scroll',
             ),
-            children: [
-              Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1180),
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              SliverPadding(
+                padding: EdgeInsets.fromLTRB(
+                  sidePadding,
+                  22,
+                  sidePadding,
+                  _reports.isNotEmpty ? 0 : 40,
+                ),
+                sliver: SliverToBoxAdapter(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -215,7 +224,7 @@ class _AcceptedReportsViewState extends State<AcceptedReportsView> {
                       ],
                       SectionTitle(
                         'Bàn điều phối',
-                        eyebrow: 'VẬN HÀNH THỜI GIAN THỰC',
+                        eyebrow: 'THEO DÕI CHUYẾN',
                         subtitle:
                             'Ghép đúng nhân sự đang sẵn sàng với từng chuyến thu gom đã tiếp nhận.',
                         action: IconButton(
@@ -225,7 +234,7 @@ class _AcceptedReportsViewState extends State<AcceptedReportsView> {
                         ),
                       ),
                       _buildMetrics(
-                        constraints.maxWidth,
+                        contentWidth,
                         awaitingAssignment: awaitingAssignment,
                         assigned: assigned,
                         onTheWay: onTheWay,
@@ -283,41 +292,29 @@ class _AcceptedReportsViewState extends State<AcceptedReportsView> {
                           'Các yêu cầu được tiếp nhận sẽ xuất hiện tại đây để phân công.',
                           icon: Icons.route_rounded,
                           title: 'Chưa có chuyến cần điều phối',
-                        )
-                      else
-                        LayoutBuilder(
-                          builder: (context, listConstraints) {
-                            final twoColumns = listConstraints.maxWidth >= 900;
-                            final cardWidth = twoColumns
-                                ? (listConstraints.maxWidth - 16) / 2
-                                : listConstraints.maxWidth;
-                            return Wrap(
-                              spacing: 16,
-                              runSpacing: 2,
-                              children: [
-                                for (final report in _reports)
-                                  SizedBox(
-                                    width: cardWidth,
-                                    child: ReportCard(
-                                      report: report,
-                                      trailing:
-                                          enterpriseCanAssign(report) ||
-                                              enterpriseCanReassign(report)
-                                          ? _buildAssignmentPanel(
-                                              report,
-                                              available,
-                                            )
-                                          : _buildTrackingPanel(report),
-                                    ),
-                                  ),
-                              ],
-                            );
-                          },
                         ),
                     ],
                   ),
                 ),
               ),
+              if (_reports.isNotEmpty)
+                SliverPadding(
+                  padding: EdgeInsets.fromLTRB(sidePadding, 0, sidePadding, 40),
+                  sliver: _EnterpriseLazyCardSliver<WasteReport>(
+                    items: _reports,
+                    availableWidth: contentWidth,
+                    twoColumnBreakpoint: 900,
+                    itemKey: (report) => report.id,
+                    itemBuilder: (report) => ReportCard(
+                      report: report,
+                      trailing:
+                          enterpriseCanAssign(report) ||
+                              enterpriseCanReassign(report)
+                          ? _buildAssignmentPanel(report, available)
+                          : _buildTrackingPanel(report),
+                    ),
+                  ),
+                ),
             ],
           ),
         );
@@ -348,7 +345,7 @@ class _AcceptedReportsViewState extends State<AcceptedReportsView> {
       ),
       (
         value: '$onTheWay',
-        label: 'Đang đến điểm hẹn',
+        label: 'Đang đến địa chỉ',
         icon: Icons.local_shipping_rounded,
         color: AppPalette.violet,
       ),
@@ -588,13 +585,13 @@ class _AcceptedReportsViewState extends State<AcceptedReportsView> {
       EnterpriseDispatchStage.inProgress => (
         Icons.recycling_rounded,
         '$assignee đang thu gom',
-        'Nhân viên đang cân, kiểm tra phân loại và ghi nhận minh chứng.',
+        'Nhân viên đang cân, kiểm tra phân loại và ghi nhận kết quả.',
         AppPalette.coral,
       ),
       _ => (
         Icons.info_outline_rounded,
         'Trạng thái cần kiểm tra',
-        'Tải lại để đồng bộ tiến độ mới nhất.',
+        'Làm mới để xem tiến độ mới nhất.',
         AppPalette.muted,
       ),
     };
@@ -628,7 +625,10 @@ class _AcceptedReportsViewState extends State<AcceptedReportsView> {
                 ),
                 const SizedBox(height: 5),
                 Text(
-                  enterpriseElapsedLabel(report.updatedAt ?? report.createdAt),
+                  enterpriseElapsedLabel(
+                    report.updatedAt ?? report.createdAt,
+                    waiting: false,
+                  ),
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
                     color: color,
                     fontWeight: FontWeight.w900,

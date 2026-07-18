@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -119,6 +120,40 @@ void main() {
       expect(openedUris.last.host, 'new.test');
     },
   );
+
+  test('only a successful reconnect requests a client resync', () async {
+    final channels = <_FakeWebSocketChannel>[];
+    final service = RealtimeService(
+      reconnectDelay: const Duration(milliseconds: 20),
+      connector: (_) {
+        final channel = _FakeWebSocketChannel();
+        channels.add(channel);
+        return channel;
+      },
+    );
+    addTearDown(service.dispose);
+    final events = <Map<String, dynamic>>[];
+    final subscription = service.events.listen(events.add);
+    addTearDown(subscription.cancel);
+
+    service.connect(
+      baseUrl: 'https://api.green.test/api',
+      token: 'session-token',
+    );
+    channels.single.send({'type': 'CONNECTED', 'timestamp': 1});
+    await Future<void>.delayed(Duration.zero);
+    expect(events, isEmpty);
+
+    channels.single.fail();
+    await Future<void>.delayed(const Duration(milliseconds: 40));
+    expect(channels, hasLength(2));
+    channels.last.send({'type': 'CONNECTED', 'timestamp': 2});
+    await Future<void>.delayed(Duration.zero);
+
+    expect(events, hasLength(1));
+    expect(events.single['type'], realtimeSyncRequiredEvent);
+    expect(events.single['reason'], 'RECONNECTED');
+  });
 }
 
 class _FakeWebSocketChannel
@@ -128,6 +163,8 @@ class _FakeWebSocketChannel
   final _sink = _FakeWebSocketSink();
 
   void fail() => _controller.addError(StateError('socket failed'));
+
+  void send(Map<String, dynamic> event) => _controller.add(jsonEncode(event));
 
   @override
   int? get closeCode => null;

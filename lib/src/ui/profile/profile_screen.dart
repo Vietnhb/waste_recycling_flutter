@@ -60,7 +60,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await widget.controller.setBaseUrl(_baseUrlCtrl.text);
     if (!mounted) return;
     setState(() => _savingServer = false);
-    showSnack(context, 'Đã lưu kết nối máy chủ phát triển.');
+    showSnack(context, 'Đã lưu kết nối thử nghiệm.');
   }
 
   @override
@@ -694,8 +694,8 @@ class _DeveloperConnectionCard extends StatelessWidget {
           final wide = constraints.maxWidth >= 680;
           final heading = const _PanelHeading(
             icon: Icons.developer_mode_rounded,
-            title: 'Kết nối phát triển',
-            subtitle: 'Cấu hình này không xuất hiện trong production build.',
+            title: 'Kết nối thử nghiệm',
+            subtitle: 'Cấu hình này chỉ xuất hiện trong bản kiểm thử.',
           );
           final field = TextField(
             controller: controller,
@@ -703,7 +703,7 @@ class _DeveloperConnectionCard extends StatelessWidget {
             textInputAction: TextInputAction.done,
             onSubmitted: (_) => onSave(),
             decoration: inputDecoration(
-              'API base URL',
+              'Địa chỉ dịch vụ',
               icon: Icons.link_rounded,
             ),
           );

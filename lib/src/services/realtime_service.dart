@@ -1,11 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../core/json_helpers.dart';
 
 typedef RealtimeChannelConnector = WebSocketChannel Function(Uri uri);
+
+const realtimeSyncRequiredEvent = 'SYNC_REQUIRED';
 
 class RealtimeService {
   RealtimeService({
@@ -23,10 +26,16 @@ class RealtimeService {
   String? _baseUrl;
   String? _token;
   int _connectionGeneration = 0;
+  int _successfulConnections = 0;
   bool _reconnectEnabled = false;
   bool _disposed = false;
 
   Stream<JsonMap> get events => _events.stream;
+
+  @visibleForTesting
+  void addTestEvent(JsonMap event) {
+    if (!_events.isClosed) _events.add(event);
+  }
 
   void connect({required String baseUrl, required String token}) {
     if (_disposed) return;
@@ -70,7 +79,19 @@ class RealtimeService {
         if (generation != _connectionGeneration || _events.isClosed) return;
         try {
           final data = jsonDecode(message.toString());
-          if (data is Map<String, dynamic>) _events.add(data);
+          if (data is! Map<String, dynamic>) return;
+          if (asString(data['type']).trim().toUpperCase() == 'CONNECTED') {
+            _successfulConnections++;
+            if (_successfulConnections > 1) {
+              _events.add({
+                ...data,
+                'type': realtimeSyncRequiredEvent,
+                'reason': 'RECONNECTED',
+              });
+            }
+            return;
+          }
+          _events.add(data);
         } catch (_) {}
       },
       onError: (_) => _scheduleReconnect(generation),
@@ -85,6 +106,7 @@ class RealtimeService {
     _token = null;
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
+    _successfulConnections = 0;
     _closeConnection();
   }
 

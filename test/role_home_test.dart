@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:waste_recycling_flutter/src/models/models.dart';
+import 'package:waste_recycling_flutter/src/services/realtime_service.dart';
 import 'package:waste_recycling_flutter/src/ui/admin/admin_screens.dart';
 import 'package:waste_recycling_flutter/src/ui/citizen/citizen_screens.dart';
 import 'package:waste_recycling_flutter/src/ui/collector/collector_screens.dart';
@@ -119,6 +120,77 @@ void main() {
     expect(find.byType(CollectorReportsView), findsOneWidget);
   });
 
+  testWidgets(
+    'Collector first trip visit loads once and realtime refresh stays on the visible tab',
+    (tester) async {
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final controller = FakeAppController.collector();
+      addTearDown(controller.dispose);
+
+      await pumpRoleHome(
+        tester,
+        home: CollectorScreen(controller: controller),
+        size: const Size(430, 932),
+      );
+      expect(controller.fakeApi.collectorProfileRequests, 1);
+      expect(controller.fakeApi.assignedReportRequests, 1);
+
+      await tester.tap(find.byIcon(Icons.route_outlined));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(controller.fakeApi.collectorProfileRequests, 2);
+      expect(controller.fakeApi.assignedReportRequests, 2);
+
+      controller.realtime.addTestEvent({
+        'type': 'REPORT_STATUS_CHANGED',
+        'reportId': 42,
+        'status': 'ON_THE_WAY',
+      });
+      await tester.pump(const Duration(milliseconds: 360));
+      await tester.pump();
+
+      expect(controller.fakeApi.collectorProfileRequests, 3);
+      expect(controller.fakeApi.assignedReportRequests, 3);
+      expect(controller.fakeApi.workHistoryRequests, 1);
+      expect(controller.fakeApi.workStatisticsRequests, 1);
+      expect(find.byType(AppLoadingView), findsNothing);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+    },
+  );
+
+  testWidgets('Collector reconnect silently refreshes only the active tab', (
+    tester,
+  ) async {
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final controller = FakeAppController.collector();
+    addTearDown(controller.dispose);
+
+    await pumpRoleHome(
+      tester,
+      home: CollectorScreen(controller: controller),
+      size: const Size(430, 932),
+    );
+    expect(controller.fakeApi.collectorProfileRequests, 1);
+    expect(controller.fakeApi.assignedReportRequests, 1);
+    expect(controller.fakeApi.workHistoryRequests, 1);
+
+    controller.realtime.addTestEvent({
+      'type': realtimeSyncRequiredEvent,
+      'reason': 'RECONNECTED',
+    });
+    await tester.pump(const Duration(milliseconds: 260));
+    await tester.pump();
+
+    expect(controller.fakeApi.collectorProfileRequests, 2);
+    expect(controller.fakeApi.assignedReportRequests, 2);
+    expect(controller.fakeApi.workHistoryRequests, 2);
+    expect(controller.fakeApi.workStatisticsRequests, 2);
+    expect(find.byType(AppLoadingView), findsNothing);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+  });
+
   testWidgets('Enterprise opens Home and keeps Pending at the next tab', (
     tester,
   ) async {
@@ -194,6 +266,88 @@ void main() {
     expect(find.byType(AdminUsersView), findsOneWidget);
   });
 
+  testWidgets('large admin directories render lazily and remain scrollable', (
+    tester,
+  ) async {
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final users = List.generate(
+      100,
+      (index) => User(
+        id: index + 10,
+        email: 'user${index + 1}@example.test',
+        fullName: 'User ${index + 1}',
+        role: 'CITIZEN',
+      ),
+    );
+    final complaints = List.generate(
+      80,
+      (index) => Complaint(
+        id: index + 1,
+        reportId: index + 100,
+        userId: index + 10,
+        userName: 'User ${index + 1}',
+        description: 'Vấn đề cần xử lý ${index + 1}',
+        status: 'PENDING',
+        createdAt: DateTime(2026, 1, 1).add(Duration(days: index)),
+      ),
+    );
+    final controller = FakeAppController.admin(
+      users: users,
+      complaints: complaints,
+    );
+    addTearDown(controller.dispose);
+
+    await pumpRoleHome(
+      tester,
+      home: AdminScreen(controller: controller),
+      size: const Size(430, 932),
+    );
+    await tester.tap(find.text('Tài khoản').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('User 100'), findsNothing);
+    final userScroll = find
+        .descendant(
+          of: find.byKey(const PageStorageKey('admin-users-scroll')),
+          matching: find.byWidgetPredicate(
+            (widget) =>
+                widget is Scrollable &&
+                widget.axisDirection == AxisDirection.down,
+          ),
+        )
+        .first;
+    await tester.scrollUntilVisible(
+      find.text('User 100'),
+      700,
+      scrollable: userScroll,
+      maxScrolls: 100,
+    );
+    expect(find.text('User 100'), findsOneWidget);
+
+    await tester.tap(find.text('Khiếu nại').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Phản hồi #1'), findsNothing);
+    final complaintScroll = find
+        .descendant(
+          of: find.byKey(const PageStorageKey('admin-complaints-scroll')),
+          matching: find.byWidgetPredicate(
+            (widget) =>
+                widget is Scrollable &&
+                widget.axisDirection == AxisDirection.down,
+          ),
+        )
+        .first;
+    await tester.scrollUntilVisible(
+      find.text('Phản hồi #1'),
+      700,
+      scrollable: complaintScroll,
+      maxScrolls: 100,
+    );
+    expect(find.text('Phản hồi #1'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('all role dashboards render at a desktop breakpoint', (
     tester,
   ) async {
@@ -248,7 +402,7 @@ void main() {
         <({Widget shell, String destination, Type homeType, Type detailType})>[
           (
             shell: CitizenScreen(controller: controllers[0]),
-            destination: 'Báo cáo',
+            destination: 'Yêu cầu',
             homeType: CitizenHomeView,
             detailType: MyReportsView,
           ),

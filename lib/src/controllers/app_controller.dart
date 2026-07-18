@@ -22,18 +22,27 @@ class AppController extends ChangeNotifier {
   ApiService get api => ApiService(ApiClient(baseUrl: baseUrl, token: token));
 
   Future<void> init() async {
-    _prefs = await SharedPreferences.getInstance();
-    baseUrl = kDebugMode
-        ? normalizeApiBaseUrl(
-            _prefs?.getString('baseUrl') ?? defaultApiBaseUrl(),
-          )
-        : defaultApiBaseUrl();
-    token = _prefs?.getString('token');
-    if (token != null) {
-      await _restoreSession();
+    try {
+      _prefs = await SharedPreferences.getInstance();
+      baseUrl = kDebugMode
+          ? normalizeApiBaseUrl(
+              _prefs?.getString('baseUrl') ?? defaultApiBaseUrl(),
+            )
+          : defaultApiBaseUrl();
+      token = _prefs?.getString('token');
+      if (token != null) {
+        await _restoreSession();
+      }
+    } catch (error) {
+      // A storage failure must not trap the app on its launch screen. The user
+      // can still enter as a guest and retry authenticated actions later.
+      token = null;
+      user = null;
+      sessionRestoreError = error;
+    } finally {
+      booting = false;
+      notifyListeners();
     }
-    booting = false;
-    notifyListeners();
   }
 
   Future<void> setBaseUrl(String value) async {

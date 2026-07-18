@@ -3,14 +3,25 @@ import 'package:image_picker/image_picker.dart';
 
 class ImageUploadService {
   static final ImagePicker _picker = ImagePicker();
+  static const double _maxImageDimension = 2048;
+  static const int _imageQuality = 82;
 
   static Future<List<XFile>> pickImages({int max = 5}) async {
-    final files = await _picker.pickMultiImage(imageQuality: 85);
+    final files = await _picker.pickMultiImage(
+      imageQuality: _imageQuality,
+      maxWidth: _maxImageDimension,
+      maxHeight: _maxImageDimension,
+    );
     return files.take(max).toList();
   }
 
   static Future<XFile?> pickImage({required ImageSource source}) =>
-      _picker.pickImage(source: source, imageQuality: 85);
+      _picker.pickImage(
+        source: source,
+        imageQuality: _imageQuality,
+        maxWidth: _maxImageDimension,
+        maxHeight: _maxImageDimension,
+      );
 
   static Future<String> upload(XFile file, String folder) async {
     final bytes = await file.readAsBytes();

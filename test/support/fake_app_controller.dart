@@ -80,7 +80,9 @@ class FakeAppController extends AppController {
       fullName: 'System Admin',
       role: 'ADMIN',
     ),
-  }) : fakeApi = FakeApiService() {
+    List<User> users = const [],
+    List<Complaint> complaints = const [],
+  }) : fakeApi = FakeApiService(users: users, complaints: complaints) {
     booting = false;
     token = 'widget-test-token';
     this.user = user;
@@ -111,6 +113,8 @@ class FakeApiService extends ApiService {
     this.rankingLoader,
     this.enterpriseHistory = const [],
     this.enterpriseHistoryError,
+    this.users = const [],
+    this.complaints = const [],
   }) : super(ApiClient(baseUrl: 'https://example.test/api'));
 
   final List<WasteReport> reports;
@@ -125,6 +129,8 @@ class FakeApiService extends ApiService {
   rankingLoader;
   final List<WasteReport> enterpriseHistory;
   final Object? enterpriseHistoryError;
+  final List<User> users;
+  final List<Complaint> complaints;
 
   int addressRequests = 0;
   int categoryRequests = 0;
@@ -133,6 +139,16 @@ class FakeApiService extends ApiService {
   int rankingRequests = 0;
   int reportRequests = 0;
   int enterpriseHistoryRequests = 0;
+  int userRequests = 0;
+  int allComplaintRequests = 0;
+  int enterpriseRequests = 0;
+  int pendingReportRequests = 0;
+  int acceptedReportRequests = 0;
+  int collectorRequests = 0;
+  int collectorProfileRequests = 0;
+  int assignedReportRequests = 0;
+  int workHistoryRequests = 0;
+  int workStatisticsRequests = 0;
   final List<({String areaType, String areaCode})> rankingCalls = [];
 
   int get totalRequests =>
@@ -195,27 +211,42 @@ class FakeApiService extends ApiService {
   }
 
   @override
-  Future<List<User>> getUsers() async => const [];
+  Future<List<User>> getUsers() async {
+    userRequests++;
+    return users;
+  }
 
   @override
-  Future<List<Complaint>> getAllComplaints() async => const [];
+  Future<List<Complaint>> getAllComplaints() async {
+    allComplaintRequests++;
+    return complaints;
+  }
 
   @override
-  Future<Enterprise> getEnterprise() async => const Enterprise(
-    id: 1,
-    userId: 9,
-    companyName: 'Green Operations',
-    acceptedWasteTypes: 'RECYCLABLE,ORGANIC',
-    capacity: 1500,
-    serviceArea: 'Ho Chi Minh City',
-    rating: 4.8,
-  );
+  Future<Enterprise> getEnterprise() async {
+    enterpriseRequests++;
+    return const Enterprise(
+      id: 1,
+      userId: 9,
+      companyName: 'Green Operations',
+      acceptedWasteTypes: 'RECYCLABLE,ORGANIC',
+      capacity: 1500,
+      serviceArea: 'Ho Chi Minh City',
+      rating: 4.8,
+    );
+  }
 
   @override
-  Future<List<WasteReport>> getPendingReports() async => const [];
+  Future<List<WasteReport>> getPendingReports() async {
+    pendingReportRequests++;
+    return const [];
+  }
 
   @override
-  Future<List<WasteReport>> getAcceptedReports() async => const [];
+  Future<List<WasteReport>> getAcceptedReports() async {
+    acceptedReportRequests++;
+    return const [];
+  }
 
   @override
   Future<List<WasteReport>> getEnterpriseReportHistory() async {
@@ -226,31 +257,46 @@ class FakeApiService extends ApiService {
   }
 
   @override
-  Future<List<Collector>> getCollectors() async => const [];
+  Future<List<Collector>> getCollectors() async {
+    collectorRequests++;
+    return const [];
+  }
 
   @override
-  Future<Collector> getCollectorProfile() async => const Collector(
-    id: 11,
-    userId: 8,
-    userName: 'Tran Minh',
-    userEmail: 'collector@example.test',
-    enterpriseId: 1,
-    enterpriseName: 'Green Operations',
-    currentStatus: 'AVAILABLE',
-  );
+  Future<Collector> getCollectorProfile() async {
+    collectorProfileRequests++;
+    return const Collector(
+      id: 11,
+      userId: 8,
+      userName: 'Tran Minh',
+      userEmail: 'collector@example.test',
+      enterpriseId: 1,
+      enterpriseName: 'Green Operations',
+      currentStatus: 'AVAILABLE',
+    );
+  }
 
   @override
-  Future<List<WasteReport>> getAssignedReports() async => const [];
+  Future<List<WasteReport>> getAssignedReports() async {
+    assignedReportRequests++;
+    return const [];
+  }
 
   @override
-  Future<List<WorkHistory>> getWorkHistory() async => const [];
+  Future<List<WorkHistory>> getWorkHistory() async {
+    workHistoryRequests++;
+    return const [];
+  }
 
   @override
-  Future<WorkStatistics> getWorkStatistics() async => const WorkStatistics(
-    totalCompletedReports: 0,
-    totalWeight: 0,
-    correctlyClassifiedCount: 0,
-  );
+  Future<WorkStatistics> getWorkStatistics() async {
+    workStatisticsRequests++;
+    return const WorkStatistics(
+      totalCompletedReports: 0,
+      totalWeight: 0,
+      correctlyClassifiedCount: 0,
+    );
+  }
 
   @override
   Future<Collector> updateCollectorStatus(String status) async => Collector(

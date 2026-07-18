@@ -87,7 +87,7 @@ class EnterpriseHistoryViewState extends State<EnterpriseHistoryView> {
                       ],
                       SectionTitle(
                         'Hồ sơ thu gom đã hoàn tất',
-                        eyebrow: 'DẤU VẾT VẬN HÀNH',
+                        eyebrow: 'LỊCH SỬ HOÀN TẤT',
                         subtitle:
                             'Đối soát người thực hiện, vật liệu, khối lượng và bằng chứng tại hiện trường.',
                         action: IconButton.filledTonal(

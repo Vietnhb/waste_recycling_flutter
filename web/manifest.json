@@ -5,8 +5,8 @@
     "display": "standalone",
     "background_color": "#FFF8EB",
     "theme_color": "#082F2B",
-    "description": "Nền tảng kết nối cộng đồng với hành trình thu gom và tái chế thông minh.",
-    "orientation": "portrait-primary",
+    "description": "Nền tảng kết nối cộng đồng với hoạt động thu gom và tái chế.",
+    "orientation": "any",
     "prefer_related_applications": false,
     "icons": [
         {

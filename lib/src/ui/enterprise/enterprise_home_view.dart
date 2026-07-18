@@ -45,6 +45,7 @@ class _EnterpriseHomeViewState extends State<EnterpriseHomeView> {
     _load(showLoader: true);
     _realtimeSub = widget.controller.realtime.events.listen((event) {
       if (!_realtimeEvents.contains(asString(event['type']))) return;
+      if (!mounted || !appTabIsActive(context)) return;
       _reloadTimer?.cancel();
       _reloadTimer = Timer(const Duration(milliseconds: 450), () => _load());
     });
@@ -126,18 +127,12 @@ class _EnterpriseHomeViewState extends State<EnterpriseHomeView> {
       });
     } catch (error) {
       if (!mounted || request != _loadRequest) return;
-      setState(() => _error = _readableError(error));
+      setState(() => _error = friendlyError(error));
     } finally {
       if (mounted && request == _loadRequest) {
         setState(() => _loading = false);
       }
     }
-  }
-
-  String _readableError(Object error) {
-    final message = error.toString().trim();
-    if (message.isEmpty) return 'Không thể tải dữ liệu vận hành lúc này.';
-    return message.replaceFirst(RegExp(r'^Exception:\s*'), '');
   }
 
   List<WasteReport> get _pendingByFit => enterpriseSortPending(_pendingReports);
@@ -212,7 +207,7 @@ class _EnterpriseHomeViewState extends State<EnterpriseHomeView> {
                       const SizedBox(height: 30),
                       SectionTitle(
                         'Tác vụ vận hành',
-                        eyebrow: 'VIỆC CẦN ĐÚNG LÚC',
+                        eyebrow: 'CẦN XỬ LÝ',
                         subtitle:
                             'Đi thẳng vào hàng chờ cần duyệt và các chuyến đang diễn ra.',
                         action: _lastUpdated == null
@@ -239,7 +234,7 @@ class _EnterpriseHomeViewState extends State<EnterpriseHomeView> {
                       const SizedBox(height: 30),
                       const SectionTitle(
                         'Lối tắt điều hành',
-                        eyebrow: 'ĐẾN ĐÚNG NƠI TRONG MỘT CHẠM',
+                        eyebrow: 'LỐI TẮT',
                         subtitle:
                             'Các công cụ thường dùng được sắp theo luồng công việc thực tế.',
                       ),
@@ -498,7 +493,7 @@ class _EnterpriseHomeViewState extends State<EnterpriseHomeView> {
         value: '$_availableCollectors/${_collectors.length}',
         label: 'Nhân sự sẵn sàng',
         hint: _busyCollectors > 0
-            ? '$_busyCollectors đang bận'
+            ? '$_busyCollectors đang có chuyến'
             : 'Có thể nhận chuyến',
         icon: Icons.groups_rounded,
         color: AppPalette.jade,
@@ -715,14 +710,14 @@ class _EnterpriseHomeViewState extends State<EnterpriseHomeView> {
               ),
               const SizedBox(height: 13),
               _EnterpriseTeamStatus(
-                label: 'Đang bận',
+                label: 'Đang có chuyến',
                 value: _busyCollectors,
                 total: total,
                 color: AppPalette.amber,
               ),
               const SizedBox(height: 13),
               _EnterpriseTeamStatus(
-                label: 'Ngoại tuyến',
+                label: 'Ngoài ca',
                 value: offline,
                 total: total,
                 color: AppPalette.muted,

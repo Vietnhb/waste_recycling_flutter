@@ -19,7 +19,10 @@ class _CollectorReportsViewState extends State<CollectorReportsView> {
   String? _updatingStatus;
   int _loadToken = 0;
   Timer? _realtimeDebounce;
+  Timer? _localEchoExpiry;
   StreamSubscription<JsonMap>? _realtimeSub;
+  _CollectorExpectedEcho? _expectedEcho;
+  bool _lastReportsRefreshSucceeded = true;
 
   @override
   void initState() {
@@ -28,11 +31,9 @@ class _CollectorReportsViewState extends State<CollectorReportsView> {
     _realtimeSub = widget.controller.realtime.events.listen((event) {
       final type = asString(event['type']);
       if (type.startsWith('REPORT_') || type == 'COLLECTOR_STATUS_CHANGED') {
-        _realtimeDebounce?.cancel();
-        _realtimeDebounce = Timer(
-          const Duration(milliseconds: 350),
-          () => _load(showLoading: false, silent: true),
-        );
+        if (!mounted || !appTabIsActive(context)) return;
+        if (_consumeExpectedEcho(event)) return;
+        _scheduleRealtimeRefresh();
       }
     });
   }
@@ -40,15 +41,91 @@ class _CollectorReportsViewState extends State<CollectorReportsView> {
   @override
   void dispose() {
     _realtimeDebounce?.cancel();
+    _localEchoExpiry?.cancel();
     _realtimeSub?.cancel();
     super.dispose();
+  }
+
+  _CollectorExpectedEcho _expectReportEcho(
+    WasteReport report,
+    String nextStatus,
+  ) {
+    _clearExpectedEcho();
+    final echo = _CollectorExpectedEcho.report(
+      reportId: report.id,
+      status: nextStatus,
+    );
+    _expectedEcho = echo;
+    return echo;
+  }
+
+  _CollectorExpectedEcho _expectCollectorStatusEcho(String status) {
+    _clearExpectedEcho();
+    final echo = _CollectorExpectedEcho.collectorStatus(status);
+    _expectedEcho = echo;
+    return echo;
+  }
+
+  bool _consumeExpectedEcho(JsonMap event) {
+    final echo = _expectedEcho;
+    if (echo == null || !echo.matches(event)) return false;
+    echo.observed = true;
+    if (echo.refreshCompleted) _clearExpectedEcho(echo);
+    return true;
+  }
+
+  void _scheduleRealtimeRefresh() {
+    _realtimeDebounce?.cancel();
+    _realtimeDebounce = Timer(const Duration(milliseconds: 350), () {
+      if (!mounted || !appTabIsActive(context)) return;
+      _load(showLoading: false, silent: true);
+    });
+  }
+
+  void _clearExpectedEcho([_CollectorExpectedEcho? echo]) {
+    if (echo != null && !identical(_expectedEcho, echo)) return;
+    _localEchoExpiry?.cancel();
+    _localEchoExpiry = null;
+    _expectedEcho = null;
+  }
+
+  Future<void> _finishLocalMutation(
+    _CollectorExpectedEcho echo, {
+    required bool committed,
+  }) async {
+    if (!identical(_expectedEcho, echo)) return;
+    if (!committed) {
+      final shouldRefresh = echo.observed;
+      _clearExpectedEcho(echo);
+      if (shouldRefresh) _scheduleRealtimeRefresh();
+      return;
+    }
+
+    // A matching socket event can arrive before, during, or shortly after the
+    // HTTP response. One quiet reload captures the committed server state;
+    // the exact echo is then ignored without hiding unrelated updates.
+    _realtimeDebounce?.cancel();
+    await _load(showLoading: false, silent: true);
+    if (!mounted || !identical(_expectedEcho, echo)) return;
+
+    if (!_lastReportsRefreshSucceeded) {
+      final shouldRetry = echo.observed;
+      _clearExpectedEcho(echo);
+      if (shouldRetry) _scheduleRealtimeRefresh();
+      return;
+    }
+
+    echo.refreshCompleted = true;
+    _localEchoExpiry = Timer(const Duration(seconds: 2), () {
+      if (mounted) _clearExpectedEcho(echo);
+    });
   }
 
   Future<void> _load({bool showLoading = true, bool silent = false}) async {
     final token = ++_loadToken;
     if (showLoading && _collector == null && _reports.isEmpty) {
       setState(() => _loading = true);
-    } else if (mounted) {
+    } else if (mounted && !silent) {
       setState(() => _refreshing = true);
     }
 
@@ -69,6 +146,7 @@ class _CollectorReportsViewState extends State<CollectorReportsView> {
     setState(() {
       if (profileResult.value case final value?) _collector = value;
       if (reportsResult.value case final value?) _reports = value;
+      _lastReportsRefreshSucceeded = reportsResult.error == null;
       _loadFailed = reportsResult.error != null && _reports.isEmpty;
       _hasPartialFailure = failures.isNotEmpty && !_loadFailed;
       _loading = false;
@@ -95,11 +173,13 @@ class _CollectorReportsViewState extends State<CollectorReportsView> {
       showSnack(context, 'Hãy hoàn tất chuyến đang giao trước khi đổi ca');
       return;
     }
+    final expectedEcho = _expectCollectorStatusEcho(status);
     setState(() => _updatingStatus = status);
     try {
       await widget.controller.api.updateCollectorStatus(status);
-      await _load(showLoading: false, silent: true);
+      await _finishLocalMutation(expectedEcho, committed: true);
     } catch (e) {
+      await _finishLocalMutation(expectedEcho, committed: false);
       if (!mounted) return;
       showErrorSnack(context, e);
     } finally {
@@ -108,7 +188,8 @@ class _CollectorReportsViewState extends State<CollectorReportsView> {
   }
 
   Future<void> _updateReport(WasteReport report) async {
-    if (collectorNextReportStatus(report.status) == null) return;
+    final nextStatus = collectorNextReportStatus(report.status);
+    if (nextStatus == null) return;
     if (!collectorCanAdvanceReport(report, _reports)) {
       showSnack(
         context,
@@ -116,13 +197,14 @@ class _CollectorReportsViewState extends State<CollectorReportsView> {
       );
       return;
     }
+    final expectedEcho = _expectReportEcho(report, nextStatus);
     final updated = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
       builder: (context) =>
           CollectorStatusDialog(report: report, controller: widget.controller),
     );
-    if (updated == true) await _load(showLoading: false, silent: true);
+    await _finishLocalMutation(expectedEcho, committed: updated == true);
   }
 
   void _openReportMap(WasteReport report) {
@@ -132,7 +214,16 @@ class _CollectorReportsViewState extends State<CollectorReportsView> {
         builder: (context) => _CollectorNavigationScreen(
           report: report,
           controller: widget.controller,
-          onReportUpdated: () => _load(showLoading: false, silent: true),
+          onReportMutationStarted: () {
+            final nextStatus = collectorNextReportStatus(report.status);
+            return nextStatus == null
+                ? null
+                : _expectReportEcho(report, nextStatus);
+          },
+          onReportMutationFinished: (echo, committed) async {
+            if (echo == null) return;
+            await _finishLocalMutation(echo, committed: committed);
+          },
         ),
       ),
     );
@@ -172,20 +263,28 @@ class _CollectorReportsViewState extends State<CollectorReportsView> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final horizontalPadding = constraints.maxWidth >= 900 ? 28.0 : 16.0;
+        final unclampedContentWidth =
+            constraints.maxWidth - (horizontalPadding * 2);
+        final contentWidth = unclampedContentWidth > 1180
+            ? 1180.0
+            : unclampedContentWidth;
+        final sidePadding = (constraints.maxWidth - contentWidth) / 2;
         return RefreshIndicator(
           onRefresh: () => _load(showLoading: false),
-          child: ListView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: EdgeInsets.fromLTRB(
-              horizontalPadding,
-              22,
-              horizontalPadding,
-              40,
+          child: CustomScrollView(
+            key: const PageStorageKey<String>(
+              'collector-active-reports-scroll',
             ),
-            children: [
-              Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1180),
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              SliverPadding(
+                padding: EdgeInsets.fromLTRB(
+                  sidePadding,
+                  22,
+                  sidePadding,
+                  !_loadFailed && activeReports.isNotEmpty ? 0 : 40,
+                ),
+                sliver: SliverToBoxAdapter(
                   child: _loadFailed
                       ? _CollectorLoadFailure(
                           title: 'Chưa tải được chuyến thu gom',
@@ -249,47 +348,121 @@ class _CollectorReportsViewState extends State<CollectorReportsView> {
                                 inProgressCount: inProgressCount,
                               ),
                               const SizedBox(height: 16),
-                              LayoutBuilder(
-                                builder: (context, listConstraints) {
-                                  final twoColumns =
-                                      listConstraints.maxWidth >= 900;
-                                  final cardWidth = twoColumns
-                                      ? (listConstraints.maxWidth - 16) / 2
-                                      : listConstraints.maxWidth;
-                                  return Wrap(
-                                    spacing: 16,
-                                    runSpacing: 16,
-                                    children: [
-                                      for (final report in activeReports)
-                                        SizedBox(
-                                          width: cardWidth,
-                                          child: _CollectorJobCard(
-                                            report: report,
-                                            onOpenMap: () =>
-                                                _openReportMap(report),
-                                            onUpdate:
-                                                collectorCanAdvanceReport(
-                                                  report,
-                                                  activeReports,
-                                                )
-                                                ? () => _updateReport(report)
-                                                : null,
-                                          ),
-                                        ),
-                                    ],
-                                  );
-                                },
-                              ),
                             ],
                           ],
                         ),
                 ),
               ),
+              if (!_loadFailed && activeReports.isNotEmpty)
+                SliverPadding(
+                  padding: EdgeInsets.fromLTRB(sidePadding, 0, sidePadding, 40),
+                  sliver: _CollectorLazyCardSliver<WasteReport>(
+                    items: activeReports,
+                    availableWidth: contentWidth,
+                    twoColumnBreakpoint: 900,
+                    itemKey: (report) => report.id,
+                    itemBuilder: (report) => _CollectorJobCard(
+                      report: report,
+                      onOpenMap: () => _openReportMap(report),
+                      onUpdate: collectorCanAdvanceReport(report, activeReports)
+                          ? () => _updateReport(report)
+                          : null,
+                    ),
+                  ),
+                ),
             ],
           ),
         );
       },
     );
+  }
+}
+
+class _CollectorLazyCardSliver<T> extends StatelessWidget {
+  const _CollectorLazyCardSliver({
+    required this.items,
+    required this.availableWidth,
+    required this.twoColumnBreakpoint,
+    required this.itemKey,
+    required this.itemBuilder,
+    this.columnSpacing = 16,
+    this.rowSpacing = 16,
+  });
+
+  final List<T> items;
+  final double availableWidth;
+  final double twoColumnBreakpoint;
+  final Object Function(T item) itemKey;
+  final Widget Function(T item) itemBuilder;
+  final double columnSpacing;
+  final double rowSpacing;
+
+  @override
+  Widget build(BuildContext context) {
+    final twoColumns =
+        availableWidth >= twoColumnBreakpoint &&
+        MediaQuery.textScalerOf(context).scale(1) <= 1.35;
+    final columnCount = twoColumns ? 2 : 1;
+    final rowCount = (items.length + columnCount - 1) ~/ columnCount;
+
+    Widget cardAt(int index) {
+      final item = items[index];
+      return KeyedSubtree(
+        key: ValueKey(itemKey(item)),
+        child: itemBuilder(item),
+      );
+    }
+
+    return SliverList(
+      delegate: SliverChildBuilderDelegate((context, rowIndex) {
+        final firstIndex = rowIndex * columnCount;
+        if (!twoColumns) {
+          return Padding(
+            padding: EdgeInsets.only(bottom: rowSpacing),
+            child: cardAt(firstIndex),
+          );
+        }
+        final secondIndex = firstIndex + 1;
+        return Padding(
+          padding: EdgeInsets.only(bottom: rowSpacing),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: cardAt(firstIndex)),
+              SizedBox(width: columnSpacing),
+              Expanded(
+                child: secondIndex < items.length
+                    ? cardAt(secondIndex)
+                    : const SizedBox.shrink(),
+              ),
+            ],
+          ),
+        );
+      }, childCount: rowCount),
+    );
+  }
+}
+
+class _CollectorExpectedEcho {
+  _CollectorExpectedEcho.report({required this.reportId, required this.status})
+    : eventType = null;
+
+  _CollectorExpectedEcho.collectorStatus(this.status)
+    : reportId = null,
+      eventType = 'COLLECTOR_STATUS_CHANGED';
+
+  final int? reportId;
+  final String? eventType;
+  final String status;
+  bool observed = false;
+  bool refreshCompleted = false;
+
+  bool matches(JsonMap event) {
+    final type = asString(event['type']).trim().toUpperCase();
+    final eventStatus = asString(event['status']).trim().toUpperCase();
+    if (eventStatus != status.trim().toUpperCase()) return false;
+    if (eventType case final expectedType?) return type == expectedType;
+    return type.startsWith('REPORT_') && asInt(event['reportId']) == reportId;
   }
 }
 
@@ -684,7 +857,7 @@ class _CollectorHeader extends StatelessWidget {
                                 SizedBox(width: 9),
                                 Expanded(
                                   child: Text(
-                                    'Hãy hoàn tất chuyến đang giao trước khi kết ca. “Đang đi” và “Đang bận” được hệ thống cập nhật tự động.',
+                                    'Hãy hoàn tất chuyến đang giao trước khi kết ca. Trạng thái ca được cập nhật tự động theo tiến độ chuyến.',
                                     style: TextStyle(
                                       color: Colors.white,
                                       fontWeight: FontWeight.w700,
@@ -931,7 +1104,7 @@ class _CollectorJobCard extends StatelessWidget {
       report.addressDetail,
     );
     final receiver = report.receiverName.trim().isEmpty
-        ? 'Người nhận chưa cập nhật tên'
+        ? 'Chưa cập nhật người liên hệ'
         : report.receiverName.trim();
     final phone = report.phoneNumber.trim();
 
@@ -1337,12 +1510,15 @@ class _CollectorNavigationScreen extends StatefulWidget {
   const _CollectorNavigationScreen({
     required this.report,
     required this.controller,
-    required this.onReportUpdated,
+    required this.onReportMutationStarted,
+    required this.onReportMutationFinished,
   });
 
   final WasteReport report;
   final AppController controller;
-  final VoidCallback onReportUpdated;
+  final _CollectorExpectedEcho? Function() onReportMutationStarted;
+  final Future<void> Function(_CollectorExpectedEcho? echo, bool committed)
+  onReportMutationFinished;
 
   @override
   State<_CollectorNavigationScreen> createState() =>
@@ -1410,14 +1586,12 @@ class _CollectorNavigationScreenState
             (position) => _handlePosition(position),
             onError: (error) {
               if (!mounted) return;
-              setState(() => _routeError = error.toString());
+              setState(() => _routeError = _navigationError(error));
             },
           );
     } catch (e) {
       if (!mounted) return;
-      setState(
-        () => _routeError = e.toString().replaceFirst('Exception: ', ''),
-      );
+      setState(() => _routeError = _navigationError(e));
     } finally {
       if (mounted) setState(() => _loadingRoute = false);
     }
@@ -1504,13 +1678,28 @@ class _CollectorNavigationScreenState
       if (fitRoute) _fitRoute();
     } catch (e) {
       if (!mounted) return;
-      setState(
-        () => _routeError = e.toString().replaceFirst('Exception: ', ''),
-      );
+      setState(() => _routeError = _navigationError(e));
     } finally {
       _routing = false;
       if (mounted) setState(() => _loadingRoute = false);
     }
+  }
+
+  String _navigationError(Object error) {
+    final text = error.toString().toLowerCase();
+    if (text.contains('permission') || text.contains('quyền truy cập vị trí')) {
+      return 'Ứng dụng chưa được cấp quyền vị trí. Hãy kiểm tra cài đặt thiết bị.';
+    }
+    if (text.contains('timeout') ||
+        text.contains('socket') ||
+        text.contains('network') ||
+        text.contains('connection')) {
+      return 'Chưa thể tải tuyến đường. Hãy kiểm tra kết nối và thử lại.';
+    }
+    if (text.contains('không tìm thấy tuyến đường')) {
+      return 'Chưa tìm thấy tuyến đường phù hợp đến địa chỉ này.';
+    }
+    return 'Chưa thể cập nhật vị trí hoặc tuyến đường. Hãy thử lại.';
   }
 
   void _fitRoute() {
@@ -1542,6 +1731,7 @@ class _CollectorNavigationScreenState
 
   Future<void> _updateReport() async {
     if (collectorNextReportStatus(widget.report.status) == null) return;
+    final expectedEcho = widget.onReportMutationStarted();
     final updated = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
@@ -1550,9 +1740,14 @@ class _CollectorNavigationScreenState
         controller: widget.controller,
       ),
     );
-    if (updated != true || !mounted) return;
-    widget.onReportUpdated();
-    Navigator.pop(context);
+    if (updated == true) {
+      // Return to the queue immediately; reconciliation stays silent in the
+      // parent so a slow network never leaves the navigation screen hanging.
+      unawaited(widget.onReportMutationFinished(expectedEcho, true));
+      if (mounted) Navigator.pop(context);
+      return;
+    }
+    await widget.onReportMutationFinished(expectedEcho, false);
   }
 
   @override
@@ -1689,7 +1884,7 @@ class _NavigationBottomPanel extends StatelessWidget {
   Future<void> _callPhone(BuildContext context) async {
     final phone = report.phoneNumber.trim();
     if (phone.isEmpty) {
-      showSnack(context, 'Không có số điện thoại người nhận');
+      showSnack(context, 'Chưa có số điện thoại người liên hệ');
       return;
     }
     final uri = Uri(scheme: 'tel', path: phone);
@@ -1708,7 +1903,7 @@ class _NavigationBottomPanel extends StatelessWidget {
       report.addressDetail,
     );
     final receiver = report.receiverName.trim().isEmpty
-        ? 'Người nhận'
+        ? 'Người liên hệ'
         : report.receiverName.trim();
     final phone = report.phoneNumber.trim();
 
@@ -1864,7 +2059,7 @@ class _NavigationBottomPanel extends StatelessWidget {
                       child: OutlinedButton.icon(
                         onPressed: () => _callPhone(context),
                         icon: const Icon(Icons.call_rounded),
-                        label: const Text('Gọi người nhận'),
+                        label: const Text('Gọi người liên hệ'),
                       ),
                     ),
                     if (onUpdate != null)
@@ -1921,7 +2116,7 @@ class _RouteSummary extends StatelessWidget {
         ? 'Chạm nút định vị để thử lại'
         : live
         ? hasRouteData
-              ? 'GPS trực tiếp · cập nhật theo vị trí thật'
+              ? 'Đang cập nhật theo vị trí của bạn'
               : 'Đã có vị trí · đang chờ tuyến đường'
         : 'Đang chờ quyền truy cập vị trí';
     final accent = error != null ? AppPalette.coral : AppPalette.primary;

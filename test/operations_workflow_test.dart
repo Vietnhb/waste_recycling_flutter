@@ -80,6 +80,63 @@ void main() {
       expect(api.updateCalls, 1);
     });
 
+    testWidgets('local websocket echo does not duplicate the mutation reload', (
+      tester,
+    ) async {
+      await _configurePhoneViewport(tester);
+      final api = _WorkflowApi(collectorReports: [_report(status: 'ASSIGNED')])
+        ..updateGate = Completer<void>();
+      final controller = _WorkflowController(api);
+      addTearDown(controller.dispose);
+
+      await _pumpWorkflow(tester, CollectorReportsView(controller: controller));
+      expect(api.collectorProfileRequests, 1);
+      expect(api.assignedReportRequests, 1);
+
+      final action = find.byKey(const ValueKey('collector-report-action-42'));
+      await tester.ensureVisible(action);
+      await tester.pumpAndSettle();
+      await tester.tap(action);
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const ValueKey('collector-status-submit-42')),
+      );
+      await tester.pump();
+
+      controller.realtime.addTestEvent({
+        'type': 'REPORT_STATUS_CHANGED',
+        'reportId': 42,
+        'status': 'ON_THE_WAY',
+      });
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(api.assignedReportRequests, 1);
+
+      api.updateGate!.complete();
+      await tester.pumpAndSettle();
+      expect(api.collectorProfileRequests, 2);
+      expect(api.assignedReportRequests, 2);
+
+      // A late duplicate of the same server echo is still consumed.
+      controller.realtime.addTestEvent({
+        'type': 'REPORT_STATUS_CHANGED',
+        'reportId': 42,
+        'status': 'ON_THE_WAY',
+      });
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(api.assignedReportRequests, 2);
+
+      // A different report is not hidden by the local-mutation guard.
+      controller.realtime.addTestEvent({
+        'type': 'REPORT_STATUS_CHANGED',
+        'reportId': 99,
+        'status': 'ON_THE_WAY',
+      });
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(api.collectorProfileRequests, 3);
+      expect(api.assignedReportRequests, 3);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+    });
+
     testWidgets('ON_THE_WAY must start collection before completion', (
       tester,
     ) async {
@@ -134,7 +191,7 @@ void main() {
       await tester.tap(action);
       await tester.pumpAndSettle();
 
-      expect(find.text('Bằng chứng chuyến #42'), findsOneWidget);
+      expect(find.text('Xác nhận hoàn tất chuyến #42'), findsOneWidget);
       expect(
         find.byKey(const ValueKey('collector-completion-weight-42')),
         findsOneWidget,
@@ -219,6 +276,17 @@ void main() {
   });
 
   group('enterprise release workflow', () {
+    test('waiting and tracking timestamps describe the correct context', () {
+      final now = DateTime(2026, 7, 18, 12);
+      final value = now.subtract(const Duration(minutes: 12));
+
+      expect(enterpriseElapsedLabel(value, now: now), 'Đã chờ 12 phút');
+      expect(
+        enterpriseElapsedLabel(value, now: now, waiting: false),
+        'Cập nhật 12 phút trước',
+      );
+    });
+
     testWidgets('reassigns a queued trip only to a different collector', (
       tester,
     ) async {
@@ -290,8 +358,11 @@ void main() {
       await _pumpWorkflow(tester, AcceptedReportsView(controller: controller));
 
       final release = find.byKey(const ValueKey('release-report-42'));
-      await tester.ensureVisible(release);
-      await tester.pumpAndSettle();
+      await _scrollOperationalTargetIntoView(
+        tester,
+        scrollKey: 'enterprise-accepted-reports-scroll',
+        target: release,
+      );
       await tester.tap(release);
       await tester.pumpAndSettle();
 
@@ -331,7 +402,7 @@ void main() {
 
         expect(find.byKey(const ValueKey('reject-report-42')), findsNothing);
         expect(find.byKey(const ValueKey('accept-report-42')), findsOneWidget);
-        expect(find.text('Khu vực mã 79'), findsOneWidget);
+        expect(find.text('Khu vực chưa cập nhật'), findsOneWidget);
         expect(
           find.textContaining(
             'Người gửi, số điện thoại và vị trí chính xác chỉ mở',
@@ -341,6 +412,75 @@ void main() {
         expect(find.text('Chưa có địa chỉ'), findsNothing);
       },
     );
+  });
+
+  group('large operational queues', () {
+    testWidgets('build the final card only after the user scrolls to it', (
+      tester,
+    ) async {
+      await _configurePhoneViewport(tester);
+      final now = DateTime.now();
+      final todayAtNoon = DateTime(now.year, now.month, now.day, 12);
+      final api = _WorkflowApi(
+        collectorReports: List.generate(
+          36,
+          (index) => _report(id: 1000 + index, status: 'ASSIGNED'),
+        ),
+        workHistory: List.generate(
+          36,
+          (index) => WorkHistory(
+            reportId: 2000 + index,
+            categoryName: 'RECYCLABLE',
+            provinceCode: '79',
+            wardCode: '26740',
+            addressDetail: 'Điểm thu gom ${index + 1}',
+            weight: 2.5,
+            isCorrectlyClassified: true,
+            collectedAt: todayAtNoon.subtract(Duration(minutes: index)),
+            citizenName: 'Người gửi ${index + 1}',
+            collectedImageUrl: '',
+          ),
+        ),
+        pendingReports: List.generate(
+          36,
+          (index) => _report(id: 3000 + index, status: 'PENDING'),
+        ),
+        acceptedReports: List.generate(
+          36,
+          (index) => _report(id: 4000 + index, status: 'ACCEPTED'),
+        ),
+      );
+      final controller = _WorkflowController(api);
+      addTearDown(controller.dispose);
+
+      await _pumpWorkflow(tester, CollectorReportsView(controller: controller));
+      await _expectLazyItemAfterScroll(
+        tester,
+        scrollKey: 'collector-active-reports-scroll',
+        itemKey: 1035,
+      );
+
+      await _pumpWorkflow(tester, CollectorHistoryView(controller: controller));
+      await _expectLazyItemAfterScroll(
+        tester,
+        scrollKey: 'collector-history-scroll',
+        itemKey: 2035,
+      );
+
+      await _pumpWorkflow(tester, PendingReportsView(controller: controller));
+      await _expectLazyItemAfterScroll(
+        tester,
+        scrollKey: 'enterprise-pending-reports-scroll',
+        itemKey: 3035,
+      );
+
+      await _pumpWorkflow(tester, AcceptedReportsView(controller: controller));
+      await _expectLazyItemAfterScroll(
+        tester,
+        scrollKey: 'enterprise-accepted-reports-scroll',
+        itemKey: 4035,
+      );
+    });
   });
 
   group('enterprise profile contract', () {
@@ -447,6 +587,43 @@ Future<void> _pumpWorkflow(WidgetTester tester, Widget child) async {
   await tester.pump(const Duration(milliseconds: 100));
 }
 
+Future<void> _expectLazyItemAfterScroll(
+  WidgetTester tester, {
+  required String scrollKey,
+  required Object itemKey,
+}) async {
+  final target = find.byKey(ValueKey(itemKey));
+  expect(target, findsNothing);
+
+  await _scrollOperationalTargetIntoView(
+    tester,
+    scrollKey: scrollKey,
+    target: target,
+  );
+  expect(target, findsOneWidget);
+}
+
+Future<void> _scrollOperationalTargetIntoView(
+  WidgetTester tester, {
+  required String scrollKey,
+  required Finder target,
+}) async {
+  final scrollView = find.byKey(PageStorageKey<String>(scrollKey));
+  expect(scrollView, findsOneWidget);
+  final scrollable = find
+      .descendant(of: scrollView, matching: find.byType(Scrollable))
+      .first;
+  expect(scrollable, findsOneWidget);
+
+  await tester.scrollUntilVisible(
+    target,
+    850,
+    scrollable: scrollable,
+    maxScrolls: 80,
+  );
+  await tester.pumpAndSettle();
+}
+
 WasteReport _report({
   int id = 42,
   required String status,
@@ -496,6 +673,7 @@ class _WorkflowController extends AppController {
 class _WorkflowApi extends ApiService {
   _WorkflowApi({
     List<WasteReport> collectorReports = const [],
+    List<WorkHistory> workHistory = const [],
     List<WasteReport> pendingReports = const [],
     List<WasteReport> acceptedReports = const [],
     this.collectors = const [],
@@ -503,11 +681,13 @@ class _WorkflowApi extends ApiService {
     this.enterpriseProfileError,
     this.locations = const [],
   }) : collectorReports = List.of(collectorReports),
+       workHistory = List.of(workHistory),
        pendingReports = List.of(pendingReports),
        acceptedReports = List.of(acceptedReports),
        super(ApiClient(baseUrl: 'https://example.test/api'));
 
   List<WasteReport> collectorReports;
+  List<WorkHistory> workHistory;
   List<WasteReport> pendingReports;
   List<WasteReport> acceptedReports;
   final List<Collector> collectors;
@@ -517,6 +697,8 @@ class _WorkflowApi extends ApiService {
   Completer<void>? updateGate;
   Completer<void>? rejectGate;
   int updateCalls = 0;
+  int collectorProfileRequests = 0;
+  int assignedReportRequests = 0;
   int rejectCalls = 0;
   int assignCalls = 0;
   int? lastAssignedReportId;
@@ -575,18 +757,27 @@ class _WorkflowApi extends ApiService {
   }
 
   @override
-  Future<Collector> getCollectorProfile() async => const Collector(
-    id: 11,
-    userId: 8,
-    userName: 'Tran Minh',
-    userEmail: 'collector@example.test',
-    enterpriseId: 1,
-    enterpriseName: 'Green Operations',
-    currentStatus: 'AVAILABLE',
-  );
+  Future<Collector> getCollectorProfile() async {
+    collectorProfileRequests++;
+    return const Collector(
+      id: 11,
+      userId: 8,
+      userName: 'Tran Minh',
+      userEmail: 'collector@example.test',
+      enterpriseId: 1,
+      enterpriseName: 'Green Operations',
+      currentStatus: 'AVAILABLE',
+    );
+  }
 
   @override
-  Future<List<WasteReport>> getAssignedReports() async => collectorReports;
+  Future<List<WasteReport>> getAssignedReports() async {
+    assignedReportRequests++;
+    return collectorReports;
+  }
+
+  @override
+  Future<List<WorkHistory>> getWorkHistory() async => workHistory;
 
   @override
   Future<WasteReport> updateCollectionStatus(int reportId, JsonMap data) async {

@@ -24,6 +24,8 @@ class _CitizenHomeViewState extends State<CitizenHomeView> {
   List<UserAddress> _addresses = const [];
   List<WasteReport> _reports = const [];
   StreamSubscription<JsonMap>? _realtimeSub;
+  Timer? _realtimeDebounce;
+  int _loadRequest = 0;
   bool _loading = true;
   String? _error;
 
@@ -32,19 +34,28 @@ class _CitizenHomeViewState extends State<CitizenHomeView> {
     super.initState();
     _load();
     _realtimeSub = widget.controller.realtime.events.listen((event) {
-      if (asString(event['type']).startsWith('REPORT_')) {
-        _load(silent: true);
+      if (!mounted ||
+          !asString(event['type']).startsWith('REPORT_') ||
+          !appTabIsActive(context)) {
+        return;
       }
+      _realtimeDebounce?.cancel();
+      _realtimeDebounce = Timer(
+        const Duration(milliseconds: 350),
+        () => _load(silent: true, reportsOnly: true),
+      );
     });
   }
 
   @override
   void dispose() {
+    _realtimeDebounce?.cancel();
     _realtimeSub?.cancel();
     super.dispose();
   }
 
-  Future<void> _load({bool silent = false}) async {
+  Future<void> _load({bool silent = false, bool reportsOnly = false}) async {
+    final request = ++_loadRequest;
     if (!silent && mounted) {
       setState(() {
         _loading = true;
@@ -52,22 +63,32 @@ class _CitizenHomeViewState extends State<CitizenHomeView> {
       });
     }
     try {
+      if (reportsOnly) {
+        final reports = await widget.controller.api.getMyReports();
+        if (!mounted || request != _loadRequest) return;
+        setState(() {
+          _reports = reports;
+          _error = null;
+        });
+        return;
+      }
       final results = await Future.wait([
         widget.controller.api.getAddresses(),
         widget.controller.api.getMyReports(),
       ]);
-      if (!mounted) return;
+      if (!mounted || request != _loadRequest) return;
       setState(() {
         _addresses = results[0] as List<UserAddress>;
         _reports = results[1] as List<WasteReport>;
         _error = null;
       });
     } catch (error) {
-      if (!mounted) return;
-      setState(() => _error = error.toString().replaceFirst('Exception: ', ''));
-      if (silent) showErrorSnack(context, error);
+      if (!mounted || request != _loadRequest) return;
+      setState(() => _error = friendlyError(error));
     } finally {
-      if (mounted && !silent) setState(() => _loading = false);
+      if (mounted && request == _loadRequest && !silent) {
+        setState(() => _loading = false);
+      }
     }
   }
 
@@ -482,7 +503,7 @@ class _CitizenHero extends StatelessWidget {
         side: BorderSide(color: Colors.white.withValues(alpha: 0.28)),
       ),
       icon: const Icon(Icons.receipt_long_rounded),
-      label: const Text('Báo cáo của tôi'),
+      label: const Text('Yêu cầu của tôi'),
     );
     if (horizontal) {
       return Column(
@@ -701,9 +722,9 @@ class _CitizenActiveReport extends StatelessWidget {
       case 'ASSIGNED':
         return 'Đã phân công người thu gom cho yêu cầu này.';
       case 'ON_THE_WAY':
-        return 'Người thu gom đang di chuyển đến điểm hẹn.';
+        return 'Người thu gom đang di chuyển đến địa chỉ thu gom.';
       case 'IN_PROGRESS':
-        return 'Người thu gom đã đến và đang xác nhận rác tại điểm hẹn.';
+        return 'Người thu gom đã đến và đang xác nhận rác tại địa chỉ thu gom.';
       default:
         return 'Trạng thái đang được đồng bộ từ hệ thống.';
     }
@@ -789,7 +810,7 @@ class _CitizenActiveReport extends StatelessWidget {
             child: FilledButton.tonalIcon(
               onPressed: onOpenReports,
               icon: const Icon(Icons.arrow_forward_rounded, size: 18),
-              label: const Text('Mở danh sách báo cáo'),
+              label: const Text('Mở danh sách yêu cầu'),
             ),
           ),
         ],
@@ -829,7 +850,7 @@ class _CitizenNoActiveReport extends StatelessWidget {
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  'Khi thấy điểm rác cần xử lý, bạn có thể gửi báo cáo ngay.',
+                  'Khi thấy điểm rác cần xử lý, bạn có thể gửi yêu cầu ngay.',
                   style: Theme.of(
                     context,
                   ).textTheme.bodySmall?.copyWith(color: AppPalette.muted),
@@ -838,7 +859,7 @@ class _CitizenNoActiveReport extends StatelessWidget {
             ),
           ),
           IconButton.filledTonal(
-            tooltip: 'Tạo báo cáo',
+            tooltip: 'Tạo yêu cầu',
             onPressed: onCreateReport,
             icon: const Icon(Icons.add_rounded),
           ),
@@ -872,7 +893,7 @@ class _CitizenQuickActions extends StatelessWidget {
         onTap: onCreateReport,
       ),
       (
-        title: 'Báo cáo',
+        title: 'Yêu cầu',
         subtitle: 'Theo dõi xử lý',
         icon: Icons.receipt_long_rounded,
         color: AppPalette.sky,
@@ -1019,7 +1040,7 @@ class _CitizenRecentSection extends StatelessWidget {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'Chưa có hoạt động nào. Báo cáo đầu tiên sẽ xuất hiện tại đây.',
+                      'Chưa có hoạt động nào. Yêu cầu đầu tiên sẽ xuất hiện tại đây.',
                       style: Theme.of(
                         context,
                       ).textTheme.bodyMedium?.copyWith(color: AppPalette.muted),

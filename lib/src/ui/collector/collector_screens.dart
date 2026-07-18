@@ -17,6 +17,7 @@ import '../../core/map_config.dart';
 import '../../features/operations/domain/operation_workflow.dart';
 import '../../models/models.dart';
 import '../../services/image_upload_service.dart';
+import '../../services/realtime_service.dart';
 import '../profile/profile_screen.dart';
 import '../shared/widgets.dart';
 
@@ -36,9 +37,32 @@ class CollectorScreen extends StatefulWidget {
 
 class _CollectorScreenState extends State<CollectorScreen> {
   int _selectedIndex = 0;
+  final Set<int> _visitedDestinations = {0};
   final _homeKey = GlobalKey<_CollectorHomeViewState>();
   final _reportsKey = GlobalKey<_CollectorReportsViewState>();
   final _historyKey = GlobalKey<_CollectorHistoryViewState>();
+  StreamSubscription<JsonMap>? _syncSub;
+  Timer? _syncDebounce;
+
+  @override
+  void initState() {
+    super.initState();
+    _syncSub = widget.controller.realtime.events.listen((event) {
+      if (asString(event['type']) != realtimeSyncRequiredEvent) return;
+      _syncDebounce?.cancel();
+      _syncDebounce = Timer(
+        const Duration(milliseconds: 250),
+        _refreshActiveDestination,
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _syncDebounce?.cancel();
+    _syncSub?.cancel();
+    super.dispose();
+  }
 
   static const _destinations = [
     (
@@ -75,9 +99,27 @@ class _CollectorScreenState extends State<CollectorScreen> {
     CollectorHistoryView(key: _historyKey, controller: widget.controller),
   ];
 
+  void _refreshActiveDestination() {
+    if (!mounted) return;
+    switch (_selectedIndex) {
+      case 0:
+        _homeKey.currentState?._load(showLoading: false, silent: true);
+        break;
+      case 1:
+        _reportsKey.currentState?._load(showLoading: false, silent: true);
+        break;
+      case 2:
+        _historyKey.currentState?._load(showLoading: false, silent: true);
+        break;
+    }
+  }
+
   void _selectDestination(int index) {
     if (_selectedIndex == index) return;
+    final shouldRefresh = _visitedDestinations.contains(index);
+    _visitedDestinations.add(index);
     setState(() => _selectedIndex = index);
+    if (!shouldRefresh) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       switch (index) {

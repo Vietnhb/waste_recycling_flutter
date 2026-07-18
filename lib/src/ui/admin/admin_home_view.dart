@@ -23,6 +23,7 @@ class _AdminHomeViewState extends State<AdminHomeView> {
   Object? _error;
   int _loadTicket = 0;
   StreamSubscription<JsonMap>? _realtimeSub;
+  Timer? _realtimeDebounce;
 
   Future<void> refresh() => _load(showLoader: false);
 
@@ -31,25 +32,33 @@ class _AdminHomeViewState extends State<AdminHomeView> {
     super.initState();
     _load();
     _realtimeSub = widget.controller.realtime.events.listen((event) {
-      if (asString(event['type']).startsWith('COMPLAINT_')) {
-        _load(showLoader: false);
+      if (!mounted ||
+          !asString(event['type']).startsWith('COMPLAINT_') ||
+          !appTabIsActive(context)) {
+        return;
       }
+      _realtimeDebounce?.cancel();
+      _realtimeDebounce = Timer(
+        const Duration(milliseconds: 350),
+        () => _load(showLoader: false, silent: true),
+      );
     });
   }
 
   @override
   void dispose() {
+    _realtimeDebounce?.cancel();
     _realtimeSub?.cancel();
     super.dispose();
   }
 
-  Future<void> _load({bool showLoader = true}) async {
+  Future<void> _load({bool showLoader = true, bool silent = false}) async {
     final ticket = ++_loadTicket;
     if (mounted) {
       setState(() {
         if (showLoader && !_hasLoadedOnce) {
           _loading = true;
-        } else {
+        } else if (!silent) {
           _refreshing = true;
         }
         _error = null;
@@ -223,8 +232,8 @@ class _AdminHomeViewState extends State<AdminHomeView> {
               const SizedBox(height: AppSpacing.xs),
               Text(
                 pendingCount == 0
-                    ? 'Hệ thống đang vận hành ổn định. Không có phản hồi nào đang chờ.'
-                    : 'Có $pendingCount phản hồi cần bạn ưu tiên để trải nghiệm cộng đồng luôn liền mạch.',
+                    ? 'Hiện không có phản hồi chờ xử lý.'
+                    : 'Có $pendingCount phản hồi đang chờ bạn xử lý.',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: Colors.white70,
                   height: 1.45,
@@ -939,14 +948,14 @@ class _AdminHomeError extends StatelessWidget {
             children: [
               const EmptyState(
                 'Không thể tải số liệu quản trị lúc này. Kiểm tra kết nối rồi thử lại.',
-                title: 'Dashboard chưa thể kết nối',
+                title: 'Chưa tải được tổng quan',
                 icon: Icons.cloud_off_rounded,
               ),
               const SizedBox(height: AppSpacing.md),
               FilledButton.icon(
                 onPressed: () => onRetry(),
                 icon: const Icon(Icons.refresh_rounded),
-                label: const Text('Tải lại dashboard'),
+                label: const Text('Tải lại'),
               ),
             ],
           ),

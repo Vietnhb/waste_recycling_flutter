@@ -61,7 +61,7 @@ class _HomeScreenState extends State<HomeScreen> {
     await widget.controller.setBaseUrl(_baseUrlCtrl.text);
     if (!mounted) return;
     Navigator.of(context).pop();
-    showSnack(context, 'Đã lưu địa chỉ API dành cho môi trường phát triển.');
+    showSnack(context, 'Đã lưu địa chỉ dịch vụ thử nghiệm.');
   }
 
   void _showApiSettings() {
@@ -104,11 +104,11 @@ class _HomeScreenState extends State<HomeScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Kết nối phát triển',
+                            'Kết nối thử nghiệm',
                             style: Theme.of(context).textTheme.titleLarge,
                           ),
                           Text(
-                            'Chỉ hiển thị trong debug build',
+                            'Chỉ hiển thị trong bản kiểm thử',
                             style: Theme.of(context).textTheme.bodySmall
                                 ?.copyWith(color: AppPalette.muted),
                           ),
@@ -124,7 +124,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   textInputAction: TextInputAction.done,
                   onSubmitted: (_) => _saveBaseUrl(),
                   decoration: inputDecoration(
-                    'API base URL',
+                    'Địa chỉ dịch vụ',
                     icon: Icons.link_rounded,
                   ),
                 ),
@@ -360,7 +360,7 @@ class _LandingHeader extends StatelessWidget {
             const Spacer(),
             if (kDebugMode)
               IconButton(
-                tooltip: 'Kết nối phát triển',
+                tooltip: 'Kết nối thử nghiệm',
                 onPressed: onDeveloperSettings,
                 icon: const Icon(Icons.data_object_rounded),
               ),
@@ -753,7 +753,7 @@ class _HeroArtwork extends StatelessWidget {
                         ),
                         const SizedBox(height: 3),
                         Text(
-                          'Từ lúc gửi báo cáo đến khi hoàn tất thu gom',
+                          'Từ lúc gửi yêu cầu đến khi hoàn tất thu gom',
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.bodySmall
@@ -839,7 +839,7 @@ class _PromiseStrip extends StatelessWidget {
             _PromiseItem(
               icon: Icons.touch_app_rounded,
               title: 'Ít thao tác',
-              detail: 'Một luồng báo cáo rõ ràng',
+              detail: 'Một quy trình thu gom rõ ràng',
             ),
             _PromiseItem(
               icon: Icons.visibility_outlined,
@@ -872,7 +872,7 @@ class _PromiseStrip extends StatelessWidget {
                 child: _PromiseItem(
                   icon: Icons.touch_app_rounded,
                   title: 'Ít thao tác',
-                  detail: 'Một luồng báo cáo rõ ràng',
+                  detail: 'Một quy trình thu gom rõ ràng',
                 ),
               ),
               SizedBox(height: 52, child: VerticalDivider()),
@@ -1139,7 +1139,7 @@ class _ClosingInvitation extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               Text(
-                'Tạo tài khoản miễn phí và gửi báo cáo đầu tiên khi bạn sẵn sàng.',
+                'Tạo tài khoản miễn phí và gửi yêu cầu đầu tiên khi bạn sẵn sàng.',
                 style: Theme.of(
                   context,
                 ).textTheme.bodyMedium?.copyWith(color: AppPalette.muted),

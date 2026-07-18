@@ -105,8 +105,8 @@ class ApiClient {
     }
     if (response.statusCode < 200 || response.statusCode >= 300) {
       final message = body is Map
-          ? asString(body['message'], 'Có lỗi xảy ra từ server')
-          : (text.isEmpty ? 'HTTP ${response.statusCode}' : text);
+          ? asString(body['message'], 'Không thể xử lý yêu cầu lúc này.')
+          : 'Không thể xử lý yêu cầu lúc này.';
       final code = body is Map ? asString(body['code']).trim() : '';
       final retryable = body is Map && body['retryable'] == true;
       throw ApiException(

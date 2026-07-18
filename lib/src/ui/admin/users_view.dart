@@ -13,6 +13,9 @@ class _AdminUsersViewState extends State<AdminUsersView> {
   final _searchCtrl = TextEditingController();
   List<User> _users = const [];
   bool _loading = true;
+  bool _hasLoaded = false;
+  String? _loadError;
+  int _loadRequest = 0;
   String _query = '';
   String _roleFilter = 'ALL';
 
@@ -28,17 +31,28 @@ class _AdminUsersViewState extends State<AdminUsersView> {
     super.dispose();
   }
 
-  Future<void> _load() async {
-    setState(() => _loading = true);
+  Future<void> _load({bool showLoading = true}) async {
+    final request = ++_loadRequest;
+    if (showLoading && !_hasLoaded) setState(() => _loading = true);
     try {
       final users = await widget.controller.api.getUsers();
-      if (!mounted) return;
-      setState(() => _users = users);
+      if (!mounted || request != _loadRequest) return;
+      setState(() {
+        _users = users;
+        _hasLoaded = true;
+        _loadError = null;
+      });
     } catch (e) {
-      if (!mounted) return;
-      showErrorSnack(context, e);
+      if (!mounted || request != _loadRequest) return;
+      setState(() {
+        _loadError = _hasLoaded
+            ? 'Chưa thể cập nhật danh bạ mới nhất. Dữ liệu gần nhất vẫn được giữ lại.'
+            : 'Không thể tải danh bạ tài khoản. Kiểm tra kết nối rồi thử lại.';
+      });
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && request == _loadRequest && showLoading) {
+        setState(() => _loading = false);
+      }
     }
   }
 
@@ -60,7 +74,7 @@ class _AdminUsersViewState extends State<AdminUsersView> {
       } else {
         await widget.controller.api.updateUser(user.id, result);
       }
-      await _load();
+      await _load(showLoading: false);
     } catch (e) {
       if (!mounted) return;
       showErrorSnack(context, e);
@@ -71,11 +85,14 @@ class _AdminUsersViewState extends State<AdminUsersView> {
     final ok = await confirmDialog(
       context,
       'Xóa vĩnh viễn tài khoản ${user.email}? Chỉ tài khoản chưa phát sinh dữ liệu nghiệp vụ mới có thể xóa.',
+      title: 'Xóa tài khoản?',
+      confirmLabel: 'Xóa tài khoản',
+      destructive: true,
     );
     if (!ok) return;
     try {
       await widget.controller.api.deleteUser(user.id);
-      await _load();
+      await _load(showLoading: false);
     } catch (e) {
       if (!mounted) return;
       showErrorSnack(context, e);
@@ -84,15 +101,26 @@ class _AdminUsersViewState extends State<AdminUsersView> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
+    if (_loading && !_hasLoaded) {
       return const AppLoadingView(label: 'Đang đồng bộ danh bạ tài khoản…');
+    }
+    if (!_hasLoaded) {
+      return _AdminDataLoadFailure(
+        title: 'Chưa mở được danh bạ',
+        message:
+            _loadError ??
+            'Không thể tải danh bạ tài khoản. Kiểm tra kết nối rồi thử lại.',
+        onRetry: _load,
+      );
     }
 
     return LayoutBuilder(
       builder: (context, constraints) {
         final pageWidth = constraints.maxWidth;
-        final horizontalPadding = pageWidth >= 900 ? 28.0 : 16.0;
-        final contentWidth = pageWidth - horizontalPadding * 2;
+        final minimumPadding = pageWidth >= 900 ? 28.0 : 16.0;
+        final availableWidth = pageWidth - minimumPadding * 2;
+        final contentWidth = availableWidth.clamp(0.0, 1180.0).toDouble();
+        final horizontalPadding = (pageWidth - contentWidth) / 2;
         final filteredUsers = _users.where((user) {
           final query = _query.trim().toLowerCase();
           final matchesQuery =
@@ -105,21 +133,29 @@ class _AdminUsersViewState extends State<AdminUsersView> {
 
         return RefreshIndicator(
           onRefresh: _load,
-          child: ListView(
+          child: CustomScrollView(
+            key: const PageStorageKey('admin-users-scroll'),
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: EdgeInsets.fromLTRB(
-              horizontalPadding,
-              22,
-              horizontalPadding,
-              40,
-            ),
-            children: [
-              Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1180),
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            slivers: [
+              SliverPadding(
+                padding: EdgeInsets.fromLTRB(
+                  horizontalPadding,
+                  22,
+                  horizontalPadding,
+                  0,
+                ),
+                sliver: SliverToBoxAdapter(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      if (_loadError case final error?) ...[
+                        _AdminDataRefreshWarning(
+                          message: error,
+                          onRetry: () => _load(showLoading: false),
+                        ),
+                        const SizedBox(height: 14),
+                      ],
                       SectionTitle(
                         'Danh bạ hệ thống',
                         eyebrow: 'QUẢN TRỊ TRUY CẬP',
@@ -142,7 +178,7 @@ class _AdminUsersViewState extends State<AdminUsersView> {
                               ),
                       ),
                       const SizedBox(height: 4),
-                      _buildMetrics(contentWidth > 1180 ? 1180 : contentWidth),
+                      _buildMetrics(contentWidth),
                       const SizedBox(height: 24),
                       AppSurface(
                         padding: const EdgeInsets.all(16),
@@ -238,42 +274,48 @@ class _AdminUsersViewState extends State<AdminUsersView> {
                           icon: const Icon(Icons.refresh_rounded),
                         ),
                       ),
-                      if (filteredUsers.isEmpty)
-                        EmptyState(
-                          _users.isEmpty
-                              ? 'Chưa có tài khoản nào trong hệ thống.'
-                              : 'Thử đổi từ khóa hoặc vai trò để xem thêm kết quả.',
-                          icon: _users.isEmpty
-                              ? Icons.group_add_rounded
-                              : Icons.search_off_rounded,
-                          title: _users.isEmpty
-                              ? 'Danh bạ đang trống'
-                              : 'Không tìm thấy tài khoản',
-                        )
-                      else
-                        LayoutBuilder(
-                          builder: (context, listConstraints) {
-                            final twoColumns = listConstraints.maxWidth >= 780;
-                            final cardWidth = twoColumns
-                                ? (listConstraints.maxWidth - 14) / 2
-                                : listConstraints.maxWidth;
-                            return Wrap(
-                              spacing: 14,
-                              runSpacing: 14,
-                              children: [
-                                for (final user in filteredUsers)
-                                  SizedBox(
-                                    width: cardWidth,
-                                    child: _buildUserCard(user),
-                                  ),
-                              ],
-                            );
-                          },
-                        ),
                     ],
                   ),
                 ),
               ),
+              if (filteredUsers.isEmpty)
+                SliverPadding(
+                  padding: EdgeInsets.fromLTRB(
+                    horizontalPadding,
+                    0,
+                    horizontalPadding,
+                    40,
+                  ),
+                  sliver: SliverToBoxAdapter(
+                    child: EmptyState(
+                      _users.isEmpty
+                          ? 'Chưa có tài khoản nào trong hệ thống.'
+                          : 'Thử đổi từ khóa hoặc vai trò để xem thêm kết quả.',
+                      icon: _users.isEmpty
+                          ? Icons.group_add_rounded
+                          : Icons.search_off_rounded,
+                      title: _users.isEmpty
+                          ? 'Danh bạ đang trống'
+                          : 'Không tìm thấy tài khoản',
+                    ),
+                  ),
+                )
+              else
+                SliverPadding(
+                  padding: EdgeInsets.fromLTRB(
+                    horizontalPadding,
+                    0,
+                    horizontalPadding,
+                    26,
+                  ),
+                  sliver: _AdminLazyCardSliver<User>(
+                    items: filteredUsers,
+                    availableWidth: contentWidth,
+                    twoColumnBreakpoint: 780,
+                    itemKey: (user) => user.id,
+                    itemBuilder: _buildUserCard,
+                  ),
+                ),
             ],
           ),
         );
@@ -520,5 +562,147 @@ class _AdminUsersViewState extends State<AdminUsersView> {
       default:
         return AppPalette.muted;
     }
+  }
+}
+
+class _AdminLazyCardSliver<T> extends StatelessWidget {
+  const _AdminLazyCardSliver({
+    required this.items,
+    required this.availableWidth,
+    required this.twoColumnBreakpoint,
+    required this.itemKey,
+    required this.itemBuilder,
+  });
+
+  final List<T> items;
+  final double availableWidth;
+  final double twoColumnBreakpoint;
+  final Object Function(T item) itemKey;
+  final Widget Function(T item) itemBuilder;
+
+  @override
+  Widget build(BuildContext context) {
+    final twoColumns =
+        availableWidth >= twoColumnBreakpoint &&
+        MediaQuery.textScalerOf(context).scale(1) <= 1.35;
+    final columnCount = twoColumns ? 2 : 1;
+    final rowCount = (items.length + columnCount - 1) ~/ columnCount;
+
+    Widget cardAt(int index) {
+      final item = items[index];
+      return KeyedSubtree(
+        key: ValueKey(itemKey(item)),
+        child: itemBuilder(item),
+      );
+    }
+
+    return SliverList(
+      delegate: SliverChildBuilderDelegate((context, rowIndex) {
+        final firstIndex = rowIndex * columnCount;
+        if (!twoColumns) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: cardAt(firstIndex),
+          );
+        }
+        final secondIndex = firstIndex + 1;
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 14),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: cardAt(firstIndex)),
+              const SizedBox(width: 14),
+              Expanded(
+                child: secondIndex < items.length
+                    ? cardAt(secondIndex)
+                    : const SizedBox.shrink(),
+              ),
+            ],
+          ),
+        );
+      }, childCount: rowCount),
+    );
+  }
+}
+
+class _AdminDataLoadFailure extends StatelessWidget {
+  const _AdminDataLoadFailure({
+    required this.title,
+    required this.message,
+    required this.onRetry,
+  });
+
+  final String title;
+  final String message;
+  final Future<void> Function() onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              EmptyState(message, title: title, icon: Icons.cloud_off_rounded),
+              const SizedBox(height: 14),
+              FilledButton.icon(
+                onPressed: onRetry,
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('Thử tải lại'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AdminDataRefreshWarning extends StatelessWidget {
+  const _AdminDataRefreshWarning({
+    required this.message,
+    required this.onRetry,
+  });
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppSurface(
+      color: AppPalette.cream,
+      padding: const EdgeInsets.all(14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(top: 3),
+            child: Icon(Icons.cloud_off_rounded, color: AppPalette.coral),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  message,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 4),
+                TextButton.icon(
+                  onPressed: onRetry,
+                  icon: const Icon(Icons.refresh_rounded, size: 18),
+                  label: const Text('Thử lại'),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

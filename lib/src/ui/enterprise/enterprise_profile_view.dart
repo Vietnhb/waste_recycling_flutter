@@ -113,7 +113,7 @@ class _EnterpriseProfileViewState extends State<EnterpriseProfileView> {
       'companyName': _companyCtrl.text.trim(),
       'acceptedWasteTypes': _selectedTypes.join(','),
       'capacity': _parseCapacity(_capacityCtrl.text)!,
-      // Typed codes are resolved from the same data_vn.json catalog used by
+      // Typed codes are resolved from the same location catalog used by
       // report addresses: P:<province> or W:<ward>.
       'serviceArea': _areas!.encodeEnterpriseServiceArea(_selectedServiceAreas),
     };
@@ -170,7 +170,7 @@ class _EnterpriseProfileViewState extends State<EnterpriseProfileView> {
       case 'ELECTRONIC':
         return 'Điện tử';
       case 'HAZARDOUS':
-        return 'Độc hại';
+        return 'Rác nguy hại';
       case 'BULKY':
         return 'Cồng kềnh';
       case 'MEDICAL':
@@ -394,8 +394,7 @@ class _EnterpriseProfileViewState extends State<EnterpriseProfileView> {
                     return Semantics(
                       selected: isSelected,
                       button: true,
-                      label:
-                          '${province.fullName}, mã ${province.code}, $scopeText',
+                      label: '${province.fullName}, $scopeText',
                       child: AppSurface(
                         key: ValueKey('enterprise-province-${province.code}'),
                         onTap: () => setModalState(() {
@@ -553,7 +552,7 @@ class _EnterpriseProfileViewState extends State<EnterpriseProfileView> {
                               ),
                               const SizedBox(height: 3),
                               Text(
-                                'Mã tỉnh/thành ${province.code} · ${province.wards.length} phường/xã trong data_vn.json',
+                                '${province.wards.length} phường/xã',
                                 style: Theme.of(sheetContext)
                                     .textTheme
                                     .bodySmall
@@ -611,7 +610,7 @@ class _EnterpriseProfileViewState extends State<EnterpriseProfileView> {
                           style: TextStyle(fontWeight: FontWeight.w900),
                         ),
                         subtitle: const Text(
-                          'Mọi yêu cầu có cùng mã tỉnh/thành đều có thể được đề xuất.',
+                          'Mọi yêu cầu trong tỉnh/thành này đều có thể được đề xuất.',
                         ),
                       ),
                     ),
@@ -631,7 +630,7 @@ class _EnterpriseProfileViewState extends State<EnterpriseProfileView> {
                           )
                         : wards.isEmpty
                         ? const EmptyState(
-                            'Thử tên khác hoặc nhập mã phường/xã.',
+                            'Thử tìm bằng tên phường hoặc xã khác.',
                             title: 'Không tìm thấy khu vực',
                             icon: Icons.search_off_rounded,
                           )
@@ -657,7 +656,6 @@ class _EnterpriseProfileViewState extends State<EnterpriseProfileView> {
                                     fontWeight: FontWeight.w800,
                                   ),
                                 ),
-                                subtitle: Text('Mã ${ward.code}'),
                                 secondary: const Icon(
                                   Icons.location_on_outlined,
                                   color: AppPalette.primary,
@@ -1185,7 +1183,7 @@ class _EnterpriseProfileViewState extends State<EnterpriseProfileView> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Hệ thống ghép yêu cầu bằng mã tỉnh/thành đã chọn. Thay đổi chỉ áp dụng cho yêu cầu mới và không làm gián đoạn chuyến đang xử lý.',
+                        'Yêu cầu mới sẽ được đề xuất theo tỉnh/thành đã chọn. Thay đổi này không ảnh hưởng đến các chuyến đang xử lý.',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: AppPalette.muted,
                           height: 1.4,

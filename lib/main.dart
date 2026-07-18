@@ -37,15 +37,22 @@ Future<void> main() async {
       ),
     );
   };
+  final controller = AppController();
+  runApp(WasteApp(controller: controller));
+
+  // Paint the branded launch screen immediately. Storage/session restore and
+  // media services can initialize in parallel instead of leaving a blank
+  // native/web surface before the first Flutter frame.
+  await Future.wait([_initializeFirebase(), controller.init()]);
+}
+
+Future<void> _initializeFirebase() async {
   try {
     await Firebase.initializeApp(options: WasteFirebaseOptions.currentPlatform);
   } catch (error, stack) {
-    // The core experience should still open when Firebase is unavailable.
-    // Features that upload media will surface their own actionable error.
+    // The core experience should still open when media upload is unavailable.
+    // Upload actions surface their own actionable error when used.
     debugPrint('FIREBASE_INIT_ERROR: $error');
     debugPrintStack(stackTrace: stack);
   }
-  final controller = AppController();
-  await controller.init();
-  runApp(WasteApp(controller: controller));
 }

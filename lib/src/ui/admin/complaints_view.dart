@@ -12,8 +12,14 @@ class AdminComplaintsView extends StatefulWidget {
 class _AdminComplaintsViewState extends State<AdminComplaintsView> {
   List<Complaint> _complaints = const [];
   bool _loading = true;
+  bool _hasLoaded = false;
+  String? _loadError;
   String _statusFilter = 'ALL';
   StreamSubscription<JsonMap>? _realtimeSub;
+  Timer? _realtimeDebounce;
+  _AdminComplaintEcho? _expectedEcho;
+  int _loadRequest = 0;
+  int? _resolvingComplaintId;
 
   @override
   void initState() {
@@ -21,58 +27,161 @@ class _AdminComplaintsViewState extends State<AdminComplaintsView> {
     _load();
     _realtimeSub = widget.controller.realtime.events.listen((event) {
       final type = asString(event['type']);
-      if (type.startsWith('COMPLAINT_')) _load();
+      if (!mounted ||
+          !type.startsWith('COMPLAINT_') ||
+          !appTabIsActive(context)) {
+        return;
+      }
+      if (_consumeExpectedEcho(event)) return;
+      _scheduleRealtimeRefresh();
     });
   }
 
   @override
   void dispose() {
+    _realtimeDebounce?.cancel();
+    _clearExpectedEcho();
     _realtimeSub?.cancel();
     super.dispose();
   }
 
-  Future<void> _load() async {
-    setState(() => _loading = true);
+  void _scheduleRealtimeRefresh() {
+    _realtimeDebounce?.cancel();
+    _realtimeDebounce = Timer(const Duration(milliseconds: 350), () {
+      if (!mounted || !appTabIsActive(context)) return;
+      _load(showLoading: false, silent: true);
+    });
+  }
+
+  _AdminComplaintEcho _expectEcho(Complaint complaint, String status) {
+    _clearExpectedEcho();
+    final echo = _AdminComplaintEcho(
+      reportId: complaint.reportId,
+      status: status,
+    );
+    _expectedEcho = echo;
+    return echo;
+  }
+
+  bool _consumeExpectedEcho(JsonMap event) {
+    final echo = _expectedEcho;
+    if (echo == null || !echo.matches(event)) return false;
+    echo.observed = true;
+    if (echo.refreshCompleted) _clearExpectedEcho(echo);
+    return true;
+  }
+
+  void _clearExpectedEcho([_AdminComplaintEcho? echo]) {
+    if (echo != null && !identical(_expectedEcho, echo)) return;
+    _expectedEcho?.expiry?.cancel();
+    _expectedEcho = null;
+  }
+
+  void _finishExpectedEcho(
+    _AdminComplaintEcho echo, {
+    required bool committed,
+    required bool refreshSucceeded,
+  }) {
+    if (!identical(_expectedEcho, echo)) return;
+    if (!committed || !refreshSucceeded) {
+      final shouldRetry = echo.observed;
+      _clearExpectedEcho(echo);
+      if (shouldRetry) _scheduleRealtimeRefresh();
+      return;
+    }
+    echo.refreshCompleted = true;
+    echo.expiry = Timer(const Duration(seconds: 2), () {
+      if (mounted) _clearExpectedEcho(echo);
+    });
+  }
+
+  Future<bool> _load({bool showLoading = true, bool silent = false}) async {
+    final request = ++_loadRequest;
+    if (showLoading && !_hasLoaded) setState(() => _loading = true);
     try {
       final complaints = await widget.controller.api.getAllComplaints();
-      if (!mounted) return;
-      setState(() => _complaints = complaints);
+      if (!mounted || request != _loadRequest) return false;
+      setState(() {
+        _complaints = complaints;
+        _hasLoaded = true;
+        _loadError = null;
+      });
+      return true;
     } catch (e) {
-      if (!mounted) return;
-      showErrorSnack(context, e);
+      if (!mounted || request != _loadRequest) return false;
+      setState(() {
+        _loadError = _hasLoaded
+            ? 'Chưa thể cập nhật phản hồi mới nhất. Dữ liệu gần nhất vẫn được giữ lại.'
+            : 'Không thể tải trung tâm phản hồi. Kiểm tra kết nối rồi thử lại.';
+      });
+      if (!silent && _hasLoaded) showErrorSnack(context, e);
+      return false;
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && request == _loadRequest && showLoading) {
+        setState(() => _loading = false);
+      }
     }
   }
 
   Future<void> _resolve(Complaint complaint) async {
+    if (_resolvingComplaintId != null) return;
     final result = await showDialog<({String status, String note})>(
       context: context,
       builder: (context) => ResolveComplaintDialog(complaint: complaint),
     );
     if (result == null) return;
+    final expectedEcho = _expectEcho(complaint, result.status);
+    setState(() => _resolvingComplaintId = complaint.id);
     try {
       await widget.controller.api.resolveComplaint(
         complaint.id,
         result.status,
         result.note,
       );
-      await _load();
+      _realtimeDebounce?.cancel();
+      final refreshed = await _load(showLoading: false);
+      _finishExpectedEcho(
+        expectedEcho,
+        committed: true,
+        refreshSucceeded: refreshed,
+      );
     } catch (e) {
+      _finishExpectedEcho(
+        expectedEcho,
+        committed: false,
+        refreshSucceeded: false,
+      );
       if (!mounted) return;
       showErrorSnack(context, e);
+    } finally {
+      if (mounted) setState(() => _resolvingComplaintId = null);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
+    if (_loading && !_hasLoaded) {
       return const AppLoadingView(label: 'Đang mở trung tâm phản hồi…');
+    }
+    if (!_hasLoaded) {
+      return _AdminDataLoadFailure(
+        title: 'Chưa mở được trung tâm phản hồi',
+        message:
+            _loadError ??
+            'Không thể tải trung tâm phản hồi. Kiểm tra kết nối rồi thử lại.',
+        onRetry: () async {
+          await _load();
+        },
+      );
     }
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final horizontalPadding = constraints.maxWidth >= 900 ? 28.0 : 16.0;
+        final pageWidth = constraints.maxWidth;
+        final minimumPadding = pageWidth >= 900 ? 28.0 : 16.0;
+        final availableWidth = pageWidth - minimumPadding * 2;
+        final contentWidth = availableWidth.clamp(0.0, 1180.0).toDouble();
+        final horizontalPadding = (pageWidth - contentWidth) / 2;
         final filteredComplaints =
             _complaints
                 .where(
@@ -93,22 +202,32 @@ class _AdminComplaintsViewState extends State<AdminComplaintsView> {
               });
 
         return RefreshIndicator(
-          onRefresh: _load,
-          child: ListView(
+          onRefresh: () async {
+            await _load();
+          },
+          child: CustomScrollView(
+            key: const PageStorageKey('admin-complaints-scroll'),
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: EdgeInsets.fromLTRB(
-              horizontalPadding,
-              22,
-              horizontalPadding,
-              40,
-            ),
-            children: [
-              Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1180),
+            slivers: [
+              SliverPadding(
+                padding: EdgeInsets.fromLTRB(
+                  horizontalPadding,
+                  22,
+                  horizontalPadding,
+                  0,
+                ),
+                sliver: SliverToBoxAdapter(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      if (_loadError case final error?) ...[
+                        _AdminDataRefreshWarning(
+                          message: error,
+                          onRetry: () =>
+                              _load(showLoading: false, silent: true),
+                        ),
+                        const SizedBox(height: 14),
+                      ],
                       SectionTitle(
                         'Trung tâm phản hồi',
                         eyebrow: 'LẮNG NGHE CỘNG ĐỒNG',
@@ -120,7 +239,7 @@ class _AdminComplaintsViewState extends State<AdminComplaintsView> {
                           icon: const Icon(Icons.refresh_rounded),
                         ),
                       ),
-                      _buildMetrics(constraints.maxWidth),
+                      _buildMetrics(contentWidth),
                       const SizedBox(height: 24),
                       AppSurface(
                         color: AppPalette.night,
@@ -212,42 +331,48 @@ class _AdminComplaintsViewState extends State<AdminComplaintsView> {
                           ],
                         ),
                       ),
-                      if (filteredComplaints.isEmpty)
-                        EmptyState(
-                          _complaints.isEmpty
-                              ? 'Chưa có phản hồi nào được gửi đến quản trị viên.'
-                              : 'Không có phản hồi ở trạng thái đã chọn.',
-                          icon: _complaints.isEmpty
-                              ? Icons.mark_chat_read_rounded
-                              : Icons.filter_alt_off_rounded,
-                          title: _complaints.isEmpty
-                              ? 'Cộng đồng đang hài lòng'
-                              : 'Bộ lọc đang trống',
-                        )
-                      else
-                        LayoutBuilder(
-                          builder: (context, listConstraints) {
-                            final twoColumns = listConstraints.maxWidth >= 860;
-                            final cardWidth = twoColumns
-                                ? (listConstraints.maxWidth - 14) / 2
-                                : listConstraints.maxWidth;
-                            return Wrap(
-                              spacing: 14,
-                              runSpacing: 14,
-                              children: [
-                                for (final complaint in filteredComplaints)
-                                  SizedBox(
-                                    width: cardWidth,
-                                    child: _buildComplaintCard(complaint),
-                                  ),
-                              ],
-                            );
-                          },
-                        ),
                     ],
                   ),
                 ),
               ),
+              if (filteredComplaints.isEmpty)
+                SliverPadding(
+                  padding: EdgeInsets.fromLTRB(
+                    horizontalPadding,
+                    0,
+                    horizontalPadding,
+                    40,
+                  ),
+                  sliver: SliverToBoxAdapter(
+                    child: EmptyState(
+                      _complaints.isEmpty
+                          ? 'Chưa có phản hồi nào được gửi đến quản trị viên.'
+                          : 'Không có phản hồi ở trạng thái đã chọn.',
+                      icon: _complaints.isEmpty
+                          ? Icons.mark_chat_read_rounded
+                          : Icons.filter_alt_off_rounded,
+                      title: _complaints.isEmpty
+                          ? 'Cộng đồng đang hài lòng'
+                          : 'Bộ lọc đang trống',
+                    ),
+                  ),
+                )
+              else
+                SliverPadding(
+                  padding: EdgeInsets.fromLTRB(
+                    horizontalPadding,
+                    0,
+                    horizontalPadding,
+                    26,
+                  ),
+                  sliver: _AdminLazyCardSliver<Complaint>(
+                    items: filteredComplaints,
+                    availableWidth: contentWidth,
+                    twoColumnBreakpoint: 860,
+                    itemKey: (complaint) => complaint.id,
+                    itemBuilder: _buildComplaintCard,
+                  ),
+                ),
             ],
           ),
         );
@@ -302,7 +427,9 @@ class _AdminComplaintsViewState extends State<AdminComplaintsView> {
     final pending = complaint.status == 'PENDING';
     final note = complaint.adminNote?.trim() ?? '';
     return AppSurface(
-      onTap: pending ? () => _resolve(complaint) : null,
+      onTap: pending && _resolvingComplaintId == null
+          ? () => _resolve(complaint)
+          : null,
       color: pending ? AppPalette.cream : AppPalette.surface,
       shadow: pending,
       padding: const EdgeInsets.all(18),
@@ -424,7 +551,10 @@ class _AdminComplaintsViewState extends State<AdminComplaintsView> {
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
-                onPressed: () => _resolve(complaint),
+                key: ValueKey('admin-resolve-complaint-${complaint.id}'),
+                onPressed: _resolvingComplaintId == null
+                    ? () => _resolve(complaint)
+                    : null,
                 icon: const Icon(Icons.rate_review_rounded),
                 label: const Text('Xử lý phản hồi'),
               ),
@@ -458,5 +588,23 @@ class _AdminComplaintsViewState extends State<AdminComplaintsView> {
         ),
       ],
     );
+  }
+}
+
+class _AdminComplaintEcho {
+  _AdminComplaintEcho({required this.reportId, required this.status});
+
+  final int reportId;
+  final String status;
+  bool observed = false;
+  bool refreshCompleted = false;
+  Timer? expiry;
+
+  bool matches(JsonMap event) {
+    return asString(event['type']).trim().toUpperCase() ==
+            'COMPLAINT_RESOLVED' &&
+        asInt(event['reportId']) == reportId &&
+        asString(event['status']).trim().toUpperCase() ==
+            status.trim().toUpperCase();
   }
 }

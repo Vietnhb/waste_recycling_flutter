@@ -15,10 +15,15 @@ class _MyReportsViewState extends State<MyReportsView> {
   int? _complainingReportId;
   final _complaintCtrl = TextEditingController();
   bool _loading = true;
+  bool _hasLoaded = false;
   bool _sendingComplaint = false;
+  String? _loadError;
   String _filter = 'ALL';
   final Set<int> _expandedJourneyIds = <int>{};
   StreamSubscription<JsonMap>? _realtimeSub;
+  Timer? _realtimeDebounce;
+  _CitizenComplaintEcho? _expectedComplaintEcho;
+  int _loadRequest = 0;
 
   @override
   void initState() {
@@ -26,36 +31,100 @@ class _MyReportsViewState extends State<MyReportsView> {
     _load();
     _realtimeSub = widget.controller.realtime.events.listen((event) {
       final type = asString(event['type']);
-      if (type.startsWith('REPORT_') || type.startsWith('COMPLAINT_')) {
-        _load(silent: true);
+      if (!mounted ||
+          (!type.startsWith('REPORT_') && !type.startsWith('COMPLAINT_')) ||
+          !appTabIsActive(context)) {
+        return;
       }
+      if (_consumeExpectedComplaintEcho(event)) return;
+      _scheduleRealtimeRefresh();
     });
   }
 
   @override
   void dispose() {
+    _realtimeDebounce?.cancel();
+    _clearExpectedComplaintEcho();
     _realtimeSub?.cancel();
     _complaintCtrl.dispose();
     super.dispose();
   }
 
-  Future<void> _load({bool silent = false}) async {
-    if (!silent) setState(() => _loading = true);
+  void _scheduleRealtimeRefresh() {
+    _realtimeDebounce?.cancel();
+    _realtimeDebounce = Timer(const Duration(milliseconds: 350), () {
+      if (!mounted || !appTabIsActive(context)) return;
+      _load(silent: true);
+    });
+  }
+
+  _CitizenComplaintEcho _expectComplaintEcho(int reportId) {
+    _clearExpectedComplaintEcho();
+    final echo = _CitizenComplaintEcho(reportId);
+    _expectedComplaintEcho = echo;
+    return echo;
+  }
+
+  bool _consumeExpectedComplaintEcho(JsonMap event) {
+    final echo = _expectedComplaintEcho;
+    if (echo == null || !echo.matches(event)) return false;
+    echo.observed = true;
+    if (echo.refreshCompleted) _clearExpectedComplaintEcho(echo);
+    return true;
+  }
+
+  void _clearExpectedComplaintEcho([_CitizenComplaintEcho? echo]) {
+    if (echo != null && !identical(_expectedComplaintEcho, echo)) return;
+    _expectedComplaintEcho?.expiry?.cancel();
+    _expectedComplaintEcho = null;
+  }
+
+  void _finishExpectedComplaintEcho(
+    _CitizenComplaintEcho echo, {
+    required bool committed,
+    required bool refreshSucceeded,
+  }) {
+    if (!identical(_expectedComplaintEcho, echo)) return;
+    if (!committed || !refreshSucceeded) {
+      final shouldRetry = echo.observed;
+      _clearExpectedComplaintEcho(echo);
+      if (shouldRetry) _scheduleRealtimeRefresh();
+      return;
+    }
+    echo.refreshCompleted = true;
+    echo.expiry = Timer(const Duration(seconds: 2), () {
+      if (mounted) _clearExpectedComplaintEcho(echo);
+    });
+  }
+
+  Future<bool> _load({bool silent = false}) async {
+    final request = ++_loadRequest;
+    if (!silent && !_hasLoaded) setState(() => _loading = true);
     try {
       final results = await Future.wait([
         widget.controller.api.getMyReports(),
         widget.controller.api.getMyComplaints(),
       ]);
-      if (!mounted) return;
+      if (!mounted || request != _loadRequest) return false;
       setState(() {
         _reports = results[0] as List<WasteReport>;
         _complaints = results[1] as List<Complaint>;
+        _hasLoaded = true;
+        _loadError = null;
       });
+      return true;
     } catch (error) {
-      if (!mounted) return;
-      showErrorSnack(context, error);
+      if (!mounted || request != _loadRequest) return false;
+      setState(() {
+        _loadError = _hasLoaded
+            ? 'Chưa thể cập nhật hành trình mới nhất. Dữ liệu gần nhất vẫn được giữ lại.'
+            : 'Không thể tải hành trình thu gom. Kiểm tra kết nối rồi thử lại.';
+      });
+      return false;
     } finally {
-      if (mounted && !silent) setState(() => _loading = false);
+      if (mounted && request == _loadRequest && !silent) {
+        setState(() => _loading = false);
+      }
     }
   }
 
@@ -105,11 +174,13 @@ class _MyReportsViewState extends State<MyReportsView> {
   }
 
   Future<void> _submitComplaint(int reportId) async {
+    if (_sendingComplaint) return;
     final description = _complaintCtrl.text.trim();
     if (description.length < 10) {
       showSnack(context, 'Vui lòng mô tả vấn đề bằng ít nhất 10 ký tự');
       return;
     }
+    final expectedEcho = _expectComplaintEcho(reportId);
     setState(() => _sendingComplaint = true);
     try {
       await widget.controller.api.createComplaint(reportId, description);
@@ -119,8 +190,19 @@ class _MyReportsViewState extends State<MyReportsView> {
         _complainingReportId = null;
         _complaintCtrl.clear();
       });
-      await _load(silent: true);
+      _realtimeDebounce?.cancel();
+      final refreshed = await _load(silent: true);
+      _finishExpectedComplaintEcho(
+        expectedEcho,
+        committed: true,
+        refreshSucceeded: refreshed,
+      );
     } catch (error) {
+      _finishExpectedComplaintEcho(
+        expectedEcho,
+        committed: false,
+        refreshSucceeded: false,
+      );
       if (!mounted) return;
       showErrorSnack(context, error);
     } finally {
@@ -130,80 +212,176 @@ class _MyReportsViewState extends State<MyReportsView> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_loading && !_hasLoaded) {
+      return const AppLoadingView(label: 'Đang mở hành trình thu gom…');
+    }
+    if (!_hasLoaded) {
+      return _CitizenDataLoadFailure(
+        title: 'Chưa mở được hành trình',
+        message:
+            _loadError ??
+            'Không thể tải hành trình thu gom. Kiểm tra kết nối rồi thử lại.',
+        onRetry: () async {
+          await _load();
+        },
+      );
+    }
     final visibleReports = _visibleReports;
-    return RefreshIndicator(
-      onRefresh: _load,
-      child: ListView(
-        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
-        children: [
-          _ReportsHero(
-            activeCount: _activeCount,
-            completedCount: _completedCount,
-            onRefresh: _load,
-          ),
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Hành trình thu gom',
-                  style: Theme.of(context).textTheme.titleLarge,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const minimumPadding = 16.0;
+        final availableWidth = constraints.maxWidth - minimumPadding * 2;
+        final contentWidth = availableWidth.clamp(0.0, 1180.0).toDouble();
+        final horizontalPadding = (constraints.maxWidth - contentWidth) / 2;
+        final twoColumns =
+            contentWidth >= 900 &&
+            MediaQuery.textScalerOf(context).scale(1) <= 1.35;
+        final columnCount = twoColumns ? 2 : 1;
+        final rowCount =
+            (visibleReports.length + columnCount - 1) ~/ columnCount;
+
+        Widget reportAt(int index) {
+          final report = visibleReports[index];
+          return KeyedSubtree(
+            key: ValueKey('citizen-report-${report.id}'),
+            child: _buildReport(report),
+          );
+        }
+
+        return RefreshIndicator(
+          onRefresh: () async {
+            await _load();
+          },
+          child: CustomScrollView(
+            key: const PageStorageKey('citizen-my-reports-scroll'),
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              SliverPadding(
+                padding: EdgeInsets.fromLTRB(
+                  horizontalPadding,
+                  12,
+                  horizontalPadding,
+                  0,
+                ),
+                sliver: SliverToBoxAdapter(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (_loadError case final error?) ...[
+                        _CitizenDataRefreshWarning(
+                          message: error,
+                          onRetry: () async {
+                            await _load();
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                      _ReportsHero(
+                        activeCount: _activeCount,
+                        completedCount: _completedCount,
+                        onRefresh: () {
+                          unawaited(_load(silent: true));
+                        },
+                      ),
+                      const SizedBox(height: 20),
+                      SectionTitle(
+                        'Hành trình thu gom',
+                        action: Text(
+                          '${visibleReports.length} yêu cầu',
+                          style: Theme.of(context).textTheme.labelMedium
+                              ?.copyWith(
+                                color: AppPalette.muted,
+                                fontWeight: FontWeight.w800,
+                              ),
+                        ),
+                      ),
+                      SingleChildScrollView(
+                        key: const PageStorageKey('citizen-report-filters'),
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            _ReportFilterChip(
+                              label: 'Tất cả',
+                              count: _reports.length,
+                              selected: _filter == 'ALL',
+                              onTap: () => setState(() => _filter = 'ALL'),
+                            ),
+                            const SizedBox(width: 8),
+                            _ReportFilterChip(
+                              label: 'Đang xử lý',
+                              count: _activeCount,
+                              selected: _filter == 'ACTIVE',
+                              onTap: () => setState(() => _filter = 'ACTIVE'),
+                            ),
+                            const SizedBox(width: 8),
+                            _ReportFilterChip(
+                              label: 'Hoàn tất',
+                              count: _completedCount,
+                              selected: _filter == 'COLLECTED',
+                              onTap: () =>
+                                  setState(() => _filter = 'COLLECTED'),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                    ],
+                  ),
                 ),
               ),
-              Text(
-                '${visibleReports.length} yêu cầu',
-                style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: AppPalette.muted,
-                  fontWeight: FontWeight.w800,
+              if (visibleReports.isEmpty)
+                SliverPadding(
+                  padding: EdgeInsets.fromLTRB(
+                    horizontalPadding,
+                    0,
+                    horizontalPadding,
+                    28,
+                  ),
+                  sliver: SliverToBoxAdapter(
+                    child: EmptyState(
+                      _reports.isEmpty
+                          ? 'Yêu cầu đầu tiên của bạn sẽ xuất hiện tại đây.'
+                          : 'Không có yêu cầu phù hợp với bộ lọc này.',
+                      icon: Icons.route_rounded,
+                      title: _reports.isEmpty
+                          ? 'Chưa có hành trình nào'
+                          : 'Bộ lọc đang trống',
+                    ),
+                  ),
+                )
+              else
+                SliverPadding(
+                  padding: EdgeInsets.fromLTRB(
+                    horizontalPadding,
+                    0,
+                    horizontalPadding,
+                    14,
+                  ),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate((context, rowIndex) {
+                      final firstIndex = rowIndex * columnCount;
+                      if (!twoColumns) return reportAt(firstIndex);
+                      final secondIndex = firstIndex + 1;
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(child: reportAt(firstIndex)),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: secondIndex < visibleReports.length
+                                ? reportAt(secondIndex)
+                                : const SizedBox.shrink(),
+                          ),
+                        ],
+                      );
+                    }, childCount: rowCount),
+                  ),
                 ),
-              ),
             ],
           ),
-          const SizedBox(height: 12),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                _ReportFilterChip(
-                  label: 'Tất cả',
-                  count: _reports.length,
-                  selected: _filter == 'ALL',
-                  onTap: () => setState(() => _filter = 'ALL'),
-                ),
-                const SizedBox(width: 8),
-                _ReportFilterChip(
-                  label: 'Đang xử lý',
-                  count: _activeCount,
-                  selected: _filter == 'ACTIVE',
-                  onTap: () => setState(() => _filter = 'ACTIVE'),
-                ),
-                const SizedBox(width: 8),
-                _ReportFilterChip(
-                  label: 'Hoàn tất',
-                  count: _completedCount,
-                  selected: _filter == 'COLLECTED',
-                  onTap: () => setState(() => _filter = 'COLLECTED'),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 18),
-          if (visibleReports.isEmpty)
-            EmptyState(
-              _reports.isEmpty
-                  ? 'Yêu cầu đầu tiên của bạn sẽ xuất hiện tại đây.'
-                  : 'Không có yêu cầu phù hợp với bộ lọc này.',
-              icon: Icons.route_rounded,
-              title: _reports.isEmpty
-                  ? 'Chưa có hành trình nào'
-                  : 'Bộ lọc đang trống',
-            )
-          else
-            ...visibleReports.map(_buildReport),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -228,6 +406,7 @@ class _MyReportsViewState extends State<MyReportsView> {
         complaintArea = Align(
           alignment: Alignment.centerLeft,
           child: TextButton.icon(
+            key: ValueKey('citizen-open-complaint-${report.id}'),
             onPressed: () => setState(() {
               _complainingReportId = report.id;
               _complaintCtrl.clear();
@@ -278,6 +457,22 @@ class _MyReportsViewState extends State<MyReportsView> {
         ],
       ),
     );
+  }
+}
+
+class _CitizenComplaintEcho {
+  _CitizenComplaintEcho(this.reportId);
+
+  final int reportId;
+  bool observed = false;
+  bool refreshCompleted = false;
+  Timer? expiry;
+
+  bool matches(JsonMap event) {
+    return asString(event['type']).trim().toUpperCase() ==
+            'COMPLAINT_CREATED' &&
+        asInt(event['reportId']) == reportId &&
+        asString(event['status']).trim().toUpperCase() == 'PENDING';
   }
 }
 
@@ -537,6 +732,87 @@ class _HeroMetric extends StatelessWidget {
   }
 }
 
+class _CitizenDataLoadFailure extends StatelessWidget {
+  const _CitizenDataLoadFailure({
+    required this.title,
+    required this.message,
+    required this.onRetry,
+  });
+
+  final String title;
+  final String message;
+  final Future<void> Function() onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              EmptyState(message, title: title, icon: Icons.cloud_off_rounded),
+              const SizedBox(height: 14),
+              FilledButton.icon(
+                onPressed: onRetry,
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('Thử tải lại'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CitizenDataRefreshWarning extends StatelessWidget {
+  const _CitizenDataRefreshWarning({
+    required this.message,
+    required this.onRetry,
+  });
+
+  final String message;
+  final Future<void> Function() onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppSurface(
+      color: AppPalette.cream,
+      padding: const EdgeInsets.all(14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(top: 3),
+            child: Icon(Icons.cloud_off_rounded, color: AppPalette.coral),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  message,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 4),
+                TextButton.icon(
+                  onPressed: onRetry,
+                  icon: const Icon(Icons.refresh_rounded, size: 18),
+                  label: const Text('Thử lại'),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ReportFilterChip extends StatelessWidget {
   const _ReportFilterChip({
     required this.label,
@@ -639,6 +915,7 @@ class _ComplaintComposer extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           TextField(
+            key: const ValueKey('citizen-complaint-input'),
             controller: controller,
             minLines: 3,
             maxLines: 5,
@@ -656,6 +933,7 @@ class _ComplaintComposer extends StatelessWidget {
             children: [
               Expanded(
                 child: FilledButton(
+                  key: const ValueKey('citizen-complaint-submit'),
                   onPressed: submitting ? null : onSubmit,
                   child: Text(submitting ? 'Đang gửi...' : 'Gửi phản hồi'),
                 ),
@@ -808,7 +1086,7 @@ class _CitizenTrackingStrip extends StatelessWidget {
                 SizedBox(width: 6),
                 Expanded(
                   child: Text(
-                    'Thời gian đến chưa được backend cung cấp.',
+                    'Chưa có thời gian đến dự kiến.',
                     style: TextStyle(
                       color: AppPalette.muted,
                       fontSize: 11,

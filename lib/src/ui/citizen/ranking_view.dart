@@ -242,7 +242,7 @@ class _RankingViewState extends State<RankingView> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const AppLoadingView(label: 'Đang dựng bảng xếp hạng xanh…');
+      return const AppLoadingView(label: 'Đang tải bảng xếp hạng…');
     }
     if (_loadError != null) {
       return _RankingLoadError(message: _loadError!, onRetry: () => _load());
@@ -346,7 +346,7 @@ class _RankingViewState extends State<RankingView> {
                       else ...[
                         SectionTitle(
                           'Top dẫn đầu',
-                          eyebrow: 'BỤC VINH DANH',
+                          eyebrow: 'NHÓM DẪN ĐẦU',
                           subtitle:
                               'Ba thành viên có tổng điểm cao nhất tại $areaLabel.',
                           action: Container(

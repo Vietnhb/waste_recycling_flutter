@@ -42,7 +42,7 @@ class _AppLaunchView extends StatelessWidget {
   Widget build(BuildContext context) {
     return const Scaffold(
       backgroundColor: AppPalette.cream,
-      body: SafeArea(child: AppLoadingView(label: 'Đang mở cánh cửa xanh…')),
+      body: SafeArea(child: AppLoadingView(label: 'Đang khởi động…')),
     );
   }
 }

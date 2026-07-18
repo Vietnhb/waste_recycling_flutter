@@ -80,7 +80,7 @@ String enterpriseCapabilityFitLabel(WasteReport report) {
     case 1:
       return 'Khớp khu vực';
     default:
-      return 'Ngoài cấu hình năng lực';
+      return 'Chưa phù hợp phạm vi tiếp nhận';
   }
 }
 
@@ -124,15 +124,30 @@ List<WasteReport> enterpriseSortDispatch(Iterable<WasteReport> source) {
   return reports;
 }
 
-String enterpriseElapsedLabel(DateTime? value, {DateTime? now}) {
-  if (value == null) return 'Chưa có thời gian cập nhật';
-  final difference = (now ?? DateTime.now()).difference(value);
-  if (difference.isNegative || difference.inMinutes < 1) return 'Vừa cập nhật';
-  if (difference.inMinutes < 60) {
-    return 'Đã chờ ${difference.inMinutes} phút';
+String enterpriseElapsedLabel(
+  DateTime? value, {
+  DateTime? now,
+  bool waiting = true,
+}) {
+  if (value == null) {
+    return waiting ? 'Chưa có thời gian gửi' : 'Chưa có lần cập nhật';
   }
-  if (difference.inHours < 24) return 'Đã chờ ${difference.inHours} giờ';
-  return 'Từ ${DateFormat('dd/MM/yyyy HH:mm').format(value)}';
+  final difference = (now ?? DateTime.now()).difference(value);
+  if (difference.isNegative || difference.inMinutes < 1) {
+    return waiting ? 'Vừa gửi' : 'Vừa cập nhật';
+  }
+  if (difference.inMinutes < 60) {
+    return waiting
+        ? 'Đã chờ ${difference.inMinutes} phút'
+        : 'Cập nhật ${difference.inMinutes} phút trước';
+  }
+  if (difference.inHours < 24) {
+    return waiting
+        ? 'Đã chờ ${difference.inHours} giờ'
+        : 'Cập nhật ${difference.inHours} giờ trước';
+  }
+  final formatted = DateFormat('dd/MM/yyyy HH:mm').format(value);
+  return waiting ? 'Gửi lúc $formatted' : 'Cập nhật lúc $formatted';
 }
 
 class _EnterpriseDataErrorView extends StatelessWidget {

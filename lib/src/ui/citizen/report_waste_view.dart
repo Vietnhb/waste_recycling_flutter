@@ -107,7 +107,7 @@ class _ReportWasteViewState extends State<ReportWasteView> {
       if (!mounted) return;
       setState(() {
         _loadError =
-            'Không thể tải dữ liệu tạo báo cáo. Kiểm tra kết nối rồi thử lại.';
+            'Không thể tải biểu mẫu tạo yêu cầu. Kiểm tra kết nối rồi thử lại.';
       });
       if (silent) showErrorSnack(context, error);
     } finally {
@@ -119,7 +119,9 @@ class _ReportWasteViewState extends State<ReportWasteView> {
     try {
       final file = await _imagePicker.pickImage(
         source: ImageSource.camera,
-        imageQuality: 85,
+        maxWidth: 2048,
+        maxHeight: 2048,
+        imageQuality: 82,
       );
       if (!mounted || file == null) return;
       await _prepareImage(file);
@@ -154,7 +156,7 @@ class _ReportWasteViewState extends State<ReportWasteView> {
       }
       if (bytes.lengthInBytes < 512 || mimeType == null) {
         throw const FormatException(
-          'Ảnh không hợp lệ. Chỉ hỗ trợ JPEG, PNG hoặc WEBP.',
+          'Ảnh không hợp lệ. Chỉ hỗ trợ JPEG, PNG hoặc WebP.',
         );
       }
       if (!mounted) return;
@@ -410,13 +412,13 @@ class _ReportWasteViewState extends State<ReportWasteView> {
               ),
               const SizedBox(height: 20),
               Text(
-                'Yêu cầu đã lên đường!',
+                'Đã gửi yêu cầu',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.headlineSmall,
               ),
               const SizedBox(height: 8),
               Text(
-                'Trạng thái tiếp nhận sẽ được cập nhật từ đơn vị thu gom. Chúng tôi không hiển thị thời gian đến khi chưa có dữ liệu thật.',
+                'Yêu cầu đang chờ đơn vị thu gom tiếp nhận. Bạn có thể theo dõi tiến độ trong mục Yêu cầu.',
                 textAlign: TextAlign.center,
                 style: Theme.of(
                   context,
@@ -448,7 +450,7 @@ class _ReportWasteViewState extends State<ReportWasteView> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const AppLoadingView(label: 'Đang mở studio phân loại rác…');
+      return const AppLoadingView(label: 'Đang chuẩn bị biểu mẫu…');
     }
     if (_loadError != null) {
       return _buildBlocker(
@@ -461,7 +463,7 @@ class _ReportWasteViewState extends State<ReportWasteView> {
     }
     if (_addresses.isEmpty) {
       return _buildBlocker(
-        title: 'Cần một điểm hẹn',
+        title: 'Thêm địa chỉ thu gom',
         message:
             'Thêm địa chỉ thu gom trước để đội vận hành biết chính xác nơi cần đến.',
         buttonLabel: 'Thêm địa chỉ',
@@ -602,7 +604,7 @@ class _ReportWasteViewState extends State<ReportWasteView> {
                 const SizedBox(height: 22),
                 _ComposerSection(
                   step: '03',
-                  title: 'Điểm hẹn thu gom',
+                  title: 'Địa chỉ thu gom',
                   subtitle: 'Dùng địa chỉ đã xác thực để ghim đúng vị trí.',
                   child: Column(
                     children: [
@@ -689,11 +691,11 @@ class _ReportWasteViewState extends State<ReportWasteView> {
       case 'RECYCLABLE':
         return 'Tái chế';
       case 'HAZARDOUS':
-        return 'Nguy hại';
+        return 'Rác nguy hại';
       case 'OTHER':
         return 'Khác';
       default:
-        return name;
+        return 'Loại chưa xác định';
     }
   }
 
@@ -985,7 +987,7 @@ class _ReportPhotoCard extends StatelessWidget {
             const SizedBox(width: 6),
             Expanded(
               child: Text(
-                'Một ảnh hiện trường · JPG, PNG hoặc WEBP',
+                'Ảnh được xử lý để gợi ý phân loại và đính kèm yêu cầu · JPG, PNG hoặc WebP',
                 style: Theme.of(
                   context,
                 ).textTheme.bodySmall?.copyWith(color: AppPalette.muted),
@@ -1031,7 +1033,7 @@ class _EmptyPhotoPrompt extends StatelessWidget {
             const _ScanShutter(),
           const SizedBox(height: 17),
           Text(
-            preparing ? 'Đang kiểm tra ảnh...' : 'Quét rác bằng camera',
+            preparing ? 'Đang kiểm tra ảnh...' : 'Chụp ảnh hiện trường',
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: 4),
@@ -1057,6 +1059,7 @@ class _LocalWasteImage extends StatelessWidget {
     return Image.memory(
       bytes,
       fit: BoxFit.cover,
+      cacheWidth: 1200,
       errorBuilder: (_, _, _) => const ColoredBox(
         color: AppPalette.surfaceMuted,
         child: Center(
@@ -1188,6 +1191,66 @@ class _WasteScanOverlayState extends State<_WasteScanOverlay>
   }
 }
 
+String _recognitionStrength(double confidence, bool requiresConfirmation) {
+  if (!requiresConfirmation && confidence >= 0.85) return 'Gợi ý rõ';
+  if (confidence >= 0.65) return 'Nên kiểm tra';
+  return 'Cần tự xác nhận';
+}
+
+String? _detectedItemCopy(WasteDetectedItem item) {
+  const labels = <String, String>{
+    'PLASTIC_BOTTLE': 'Chai nhựa',
+    'PLASTIC_CONTAINER': 'Hộp nhựa',
+    'PLASTIC_BAG': 'Túi nhựa',
+    'GLASS_BOTTLE': 'Chai thủy tinh',
+    'GLASS_CONTAINER': 'Đồ thủy tinh',
+    'ALUMINUM_CAN': 'Lon nhôm',
+    'METAL_CAN': 'Lon kim loại',
+    'PAPER': 'Giấy',
+    'CARDBOARD': 'Bìa carton',
+    'FOOD_WASTE': 'Thức ăn thừa',
+    'ORGANIC_WASTE': 'Rác hữu cơ',
+    'BATTERY': 'Pin',
+    'E_WASTE': 'Thiết bị điện tử',
+    'ELECTRONIC_WASTE': 'Thiết bị điện tử',
+    'MEDICAL_WASTE': 'Rác y tế',
+    'SHARP_OBJECT': 'Vật sắc nhọn',
+  };
+  final code = item.code.trim().toUpperCase();
+  return labels[code] ?? safeVietnameseUserText(item.label, maxLength: 48);
+}
+
+String _safetyFlagCopy(WasteSafetyFlag flag) {
+  const messages = <String, String>{
+    'SHARP': 'Có vật sắc nhọn; không chạm tay trần.',
+    'BIOHAZARD':
+        'Có nguy cơ sinh học; tránh tiếp xúc và để riêng với rác thường.',
+    'CHEMICAL': 'Có dấu hiệu hóa chất; giữ kín và không trộn với rác khác.',
+    'BATTERY_OR_EWASTE':
+        'Có pin hoặc thiết bị điện tử; không nghiền, đốt hay làm thủng.',
+    'PRESSURIZED': 'Có bình chịu áp; tránh nhiệt và không chọc thủng.',
+    'MEDICAL': 'Có rác y tế; cần được xử lý riêng.',
+    'FIRE_RISK': 'Có nguy cơ cháy; để xa nguồn nhiệt và vật dễ cháy.',
+    'PERSONAL_DATA':
+        'Ảnh có thể chứa thông tin riêng tư; hãy kiểm tra trước khi gửi.',
+    'UNKNOWN_RISK': 'Chưa xác định được mức an toàn; hãy xử lý thận trọng.',
+  };
+  return messages[flag.code.trim().toUpperCase()] ??
+      safeVietnameseUserText(flag.message, maxLength: 120) ??
+      'Có lưu ý an toàn; hãy kiểm tra kỹ trước khi đóng gói.';
+}
+
+String? _guidanceHeadlineCopy(WasteClassification value) {
+  const headlines = <String, String>{
+    'ORGANIC': 'Để ráo nước và đựng riêng trong túi hoặc thùng kín.',
+    'RECYCLABLE': 'Làm sạch, để khô và ép gọn nếu an toàn.',
+    'HAZARDOUS': 'Đóng gói riêng và tránh tiếp xúc trực tiếp.',
+    'OTHER': 'Đóng gói gọn và xác nhận lại loại rác trước khi gửi.',
+  };
+  return headlines[value.category.trim().toUpperCase()] ??
+      safeVietnameseUserText(value.guidance.headline, maxLength: 120);
+}
+
 class _AiClassificationCard extends StatelessWidget {
   const _AiClassificationCard({
     required this.phase,
@@ -1236,14 +1299,14 @@ class _AiClassificationCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Green Vision đang quan sát',
+                      'Đang kiểm tra ảnh',
                       style: Theme.of(
                         context,
                       ).textTheme.titleMedium?.copyWith(color: Colors.white),
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Nhận diện vật liệu, mức nguy hại và cách xử lý phù hợp…',
+                      'Đang gợi ý loại rác và lưu ý an toàn…',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Colors.white.withValues(alpha: 0.7),
                       ),
@@ -1288,7 +1351,7 @@ class _AiClassificationCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Không làm gián đoạn báo cáo',
+                      'Chưa thể nhận diện ảnh',
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                     const SizedBox(height: 4),
@@ -1302,7 +1365,7 @@ class _AiClassificationCard extends StatelessWidget {
                     TextButton.icon(
                       onPressed: enabled ? onRetry : null,
                       icon: const Icon(Icons.refresh_rounded, size: 18),
-                      label: const Text('Phân tích lại'),
+                      label: const Text('Thử lại'),
                     ),
                   ],
                 ),
@@ -1315,9 +1378,18 @@ class _AiClassificationCard extends StatelessWidget {
 
     final value = result;
     if (value == null) return const SizedBox.shrink();
-    final confidencePercent = (value.confidence * 100).round();
     final isCautious = value.requiresConfirmation || value.confidence < 0.7;
     final isHazard = value.hasHighRisk || value.category == 'HAZARDOUS';
+    final recognitionStrength = _recognitionStrength(
+      value.confidence,
+      value.requiresConfirmation,
+    );
+    final detectedItems = value.detectedItems
+        .map(_detectedItemCopy)
+        .whereType<String>()
+        .take(4)
+        .toList();
+    final guidanceHeadline = _guidanceHeadlineCopy(value);
     final accent = isHazard
         ? AppPalette.danger
         : isCautious
@@ -1332,7 +1404,7 @@ class _AiClassificationCard extends StatelessWidget {
     return Semantics(
       liveRegion: true,
       label:
-          'Gợi ý từ ảnh: ${suggestionLabel ?? value.category}, độ tin cậy $confidencePercent phần trăm',
+          'Gợi ý từ ảnh: ${suggestionLabel ?? 'chưa xác định'}. $recognitionStrength.',
       child: Container(
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
@@ -1393,7 +1465,7 @@ class _AiClassificationCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(AppRadii.pill),
                   ),
                   child: Text(
-                    '$confidencePercent% tin cậy',
+                    recognitionStrength,
                     style: TextStyle(
                       color: isHazard ? AppPalette.danger : AppPalette.night,
                       fontWeight: FontWeight.w900,
@@ -1444,15 +1516,14 @@ class _AiClassificationCard extends StatelessWidget {
                 ),
               ],
             ),
-            if (value.detectedItems.isNotEmpty) ...[
+            if (detectedItems.isNotEmpty) ...[
               const SizedBox(height: 14),
               Wrap(
                 spacing: 7,
                 runSpacing: 7,
-                children: value.detectedItems
-                    .take(4)
+                children: detectedItems
                     .map(
-                      (item) => Container(
+                      (label) => Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 10,
                           vertical: 7,
@@ -1462,7 +1533,7 @@ class _AiClassificationCard extends StatelessWidget {
                           borderRadius: BorderRadius.circular(AppRadii.pill),
                         ),
                         child: Text(
-                          item.label,
+                          label,
                           style: const TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w800,
@@ -1496,7 +1567,7 @@ class _AiClassificationCard extends StatelessWidget {
                     const SizedBox(width: 9),
                     Expanded(
                       child: Text(
-                        flag.message,
+                        _safetyFlagCopy(flag),
                         style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
                     ),
@@ -1504,7 +1575,7 @@ class _AiClassificationCard extends StatelessWidget {
                 ),
               ),
             ],
-            if (value.guidance.headline.isNotEmpty) ...[
+            if (guidanceHeadline != null) ...[
               const SizedBox(height: 12),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1517,7 +1588,7 @@ class _AiClassificationCard extends StatelessWidget {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      value.guidance.headline,
+                      guidanceHeadline,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         fontWeight: FontWeight.w800,
                       ),
@@ -1529,7 +1600,7 @@ class _AiClassificationCard extends StatelessWidget {
             if (value.alternatives.isNotEmpty) ...[
               const SizedBox(height: 8),
               Text(
-                'Khả năng khác: ${value.alternatives.take(2).map((item) => '${categoryLabel(item.category)} ${(item.confidence * 100).round()}%').join(' · ')}',
+                'Cũng có thể là: ${value.alternatives.take(2).map((item) => categoryLabel(item.category)).join(' · ')}',
                 style: Theme.of(
                   context,
                 ).textTheme.bodySmall?.copyWith(color: AppPalette.muted),

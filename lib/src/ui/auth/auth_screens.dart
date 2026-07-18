@@ -73,7 +73,7 @@ class _LoginScreenState extends State<LoginScreen> {
       eyebrow: 'CHÀO BẠN TRỞ LẠI',
       title: 'Tiếp tục hành trình xanh.',
       subtitle:
-          'Đăng nhập để theo dõi báo cáo, điểm thưởng và những thay đổi bạn đã cùng tạo nên.',
+          'Đăng nhập để theo dõi yêu cầu thu gom, điểm xanh và những đóng góp của bạn.',
       child: AutofillGroup(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -116,8 +116,10 @@ class _LoginScreenState extends State<LoginScreen> {
               label: Text(_loading ? 'Đang đăng nhập…' : 'Đăng nhập'),
             ),
             const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+            Wrap(
+              alignment: WrapAlignment.center,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 3,
               children: [
                 Text(
                   'Chưa có tài khoản?',
@@ -125,7 +127,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     context,
                   ).textTheme.bodyMedium?.copyWith(color: AppPalette.muted),
                 ),
-                const SizedBox(width: 3),
                 TextButton(
                   onPressed: () => Navigator.pushReplacement(
                     context,
@@ -224,7 +225,7 @@ class _SignupScreenState extends State<SignupScreen> {
       eyebrow: 'GIA NHẬP CỘNG ĐỒNG',
       title: 'Một tài khoản. Nhiều điều xanh.',
       subtitle:
-          'Tạo hồ sơ để gửi báo cáo, đồng hành cùng đội thu gom và lưu lại từng đóng góp của bạn.',
+          'Tạo hồ sơ để gửi yêu cầu, theo dõi chuyến thu gom và lưu lại từng đóng góp của bạn.',
       child: AutofillGroup(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -301,8 +302,10 @@ class _SignupScreenState extends State<SignupScreen> {
               label: Text(_loading ? 'Đang tạo tài khoản…' : 'Tạo tài khoản'),
             ),
             const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+            Wrap(
+              alignment: WrapAlignment.center,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 3,
               children: [
                 Text(
                   'Đã là thành viên?',
@@ -310,7 +313,6 @@ class _SignupScreenState extends State<SignupScreen> {
                     context,
                   ).textTheme.bodyMedium?.copyWith(color: AppPalette.muted),
                 ),
-                const SizedBox(width: 3),
                 TextButton(
                   onPressed: () => Navigator.pushReplacement(
                     context,
@@ -574,7 +576,12 @@ class _AuthVisual extends StatelessWidget {
                       ),
                       const SizedBox(width: 10),
                     ],
-                    const _AuthWordmark(onDark: true),
+                    if (compact)
+                      const Expanded(
+                        child: _AuthWordmark(onDark: true, flexible: true),
+                      )
+                    else
+                      const _AuthWordmark(onDark: true),
                   ],
                 ),
                 const Spacer(),
@@ -626,9 +633,10 @@ class _AuthVisual extends StatelessWidget {
 }
 
 class _AuthWordmark extends StatelessWidget {
-  const _AuthWordmark({this.onDark = false});
+  const _AuthWordmark({this.onDark = false, this.flexible = false});
 
   final bool onDark;
+  final bool flexible;
 
   @override
   Widget build(BuildContext context) {
@@ -637,25 +645,34 @@ class _AuthWordmark extends StatelessWidget {
       children: [
         AppBrandMark(size: 38, onDark: onDark),
         const SizedBox(width: 10),
-        Text.rich(
-          TextSpan(
-            children: [
-              const TextSpan(text: 'Tái Chế '),
-              TextSpan(
-                text: 'Xanh',
-                style: TextStyle(
-                  color: onDark ? AppPalette.lime : AppPalette.primary,
-                ),
-              ),
-            ],
-          ),
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            color: onDark ? Colors.white : AppPalette.ink,
-            fontWeight: FontWeight.w900,
-            letterSpacing: -0.5,
-          ),
-        ),
+        if (flexible)
+          Flexible(child: _buildName(context))
+        else
+          _buildName(context),
       ],
+    );
+  }
+
+  Widget _buildName(BuildContext context) {
+    return Text.rich(
+      TextSpan(
+        children: [
+          const TextSpan(text: 'Tái Chế '),
+          TextSpan(
+            text: 'Xanh',
+            style: TextStyle(
+              color: onDark ? AppPalette.lime : AppPalette.primary,
+            ),
+          ),
+        ],
+      ),
+      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+        color: onDark ? Colors.white : AppPalette.ink,
+        fontWeight: FontWeight.w900,
+        letterSpacing: -0.5,
+      ),
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
     );
   }
 }
@@ -690,7 +707,7 @@ class _DevAccessPanel extends StatelessWidget {
           ),
         ),
         subtitle: const Text(
-          'Bỏ qua xác thực trong debug build',
+          'Chỉ dành cho kiểm thử nội bộ',
           style: TextStyle(color: AppPalette.muted, fontSize: 10),
         ),
         shape: const RoundedRectangleBorder(),
@@ -701,10 +718,10 @@ class _DevAccessPanel extends StatelessWidget {
             runSpacing: 7,
             children: [
               for (final role in const [
-                ('ADMIN', 'Admin'),
-                ('CITIZEN', 'Citizen'),
-                ('ENTERPRISE', 'Enterprise'),
-                ('COLLECTOR', 'Collector'),
+                ('ADMIN', 'Quản trị viên'),
+                ('CITIZEN', 'Người dân'),
+                ('ENTERPRISE', 'Doanh nghiệp'),
+                ('COLLECTOR', 'Nhân viên thu gom'),
               ])
                 OutlinedButton(
                   onPressed: () => onSelected(role.$1),

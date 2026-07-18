@@ -16,6 +16,7 @@ class _CollectorHistoryViewState extends State<CollectorHistoryView> {
   late DateTime _fromDate;
   late DateTime _toDate;
   StreamSubscription<JsonMap>? _realtimeSub;
+  int _loadRequest = 0;
 
   @override
   void initState() {
@@ -26,7 +27,9 @@ class _CollectorHistoryViewState extends State<CollectorHistoryView> {
     _load();
     _realtimeSub = widget.controller.realtime.events.listen((event) {
       final type = asString(event['type']);
-      if (type == 'REPORT_COLLECTED') _load(showLoading: false);
+      if (mounted && type == 'REPORT_COLLECTED' && appTabIsActive(context)) {
+        _load(showLoading: false, silent: true);
+      }
     });
   }
 
@@ -36,21 +39,24 @@ class _CollectorHistoryViewState extends State<CollectorHistoryView> {
     super.dispose();
   }
 
-  Future<void> _load({bool showLoading = true}) async {
+  Future<void> _load({bool showLoading = true, bool silent = false}) async {
+    final request = ++_loadRequest;
     if (showLoading) setState(() => _loading = true);
     try {
       final history = await widget.controller.api.getWorkHistory();
-      if (!mounted) return;
+      if (!mounted || request != _loadRequest) return;
       setState(() {
         _history = history;
         _loadFailed = false;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || request != _loadRequest) return;
       setState(() => _loadFailed = _history.isEmpty);
-      showErrorSnack(context, e);
+      if (!silent) showErrorSnack(context, e);
     } finally {
-      if (mounted && showLoading) setState(() => _loading = false);
+      if (mounted && request == _loadRequest && showLoading) {
+        setState(() => _loading = false);
+      }
     }
   }
 
@@ -108,7 +114,7 @@ class _CollectorHistoryViewState extends State<CollectorHistoryView> {
   @override
   Widget build(BuildContext context) {
     if (_loading && _history.isEmpty) {
-      return const AppLoadingView(label: 'Đang mở nhật ký những chuyến xanh…');
+      return const AppLoadingView(label: 'Đang tải lịch sử thu gom…');
     }
     final filtered = _filteredHistory;
     final rangeText =
@@ -117,20 +123,26 @@ class _CollectorHistoryViewState extends State<CollectorHistoryView> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final horizontalPadding = constraints.maxWidth >= 900 ? 28.0 : 16.0;
+        final unclampedContentWidth =
+            constraints.maxWidth - (horizontalPadding * 2);
+        final contentWidth = unclampedContentWidth > 1180
+            ? 1180.0
+            : unclampedContentWidth;
+        final sidePadding = (constraints.maxWidth - contentWidth) / 2;
         return RefreshIndicator(
           onRefresh: () => _load(showLoading: false),
-          child: ListView(
+          child: CustomScrollView(
+            key: const PageStorageKey<String>('collector-history-scroll'),
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: EdgeInsets.fromLTRB(
-              horizontalPadding,
-              22,
-              horizontalPadding,
-              40,
-            ),
-            children: [
-              Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1180),
+            slivers: [
+              SliverPadding(
+                padding: EdgeInsets.fromLTRB(
+                  sidePadding,
+                  22,
+                  sidePadding,
+                  !_loadFailed && filtered.isNotEmpty ? 0 : 40,
+                ),
+                sliver: SliverToBoxAdapter(
                   child: _loadFailed
                       ? _CollectorLoadFailure(
                           title: 'Chưa mở được lịch sử hoạt động',
@@ -143,7 +155,7 @@ class _CollectorHistoryViewState extends State<CollectorHistoryView> {
                           children: [
                             SectionTitle(
                               'Nhật ký thu gom',
-                              eyebrow: 'DẤU ẤN CỦA MỖI CHUYẾN ĐI',
+                              eyebrow: 'CHUYẾN ĐÃ HOÀN TẤT',
                               subtitle:
                                   'Xem lại ảnh xác nhận, khối lượng và chất lượng phân loại theo khoảng ngày.',
                               action: IconButton.filledTonal(
@@ -177,32 +189,22 @@ class _CollectorHistoryViewState extends State<CollectorHistoryView> {
                                 'Thử chọn một khoảng ngày khác để xem ảnh và kết quả những chuyến đã hoàn thành.',
                                 title: 'Chưa có dấu chân trong khoảng này',
                                 icon: Icons.photo_library_outlined,
-                              )
-                            else
-                              LayoutBuilder(
-                                builder: (context, listConstraints) {
-                                  final twoColumns =
-                                      listConstraints.maxWidth >= 860;
-                                  final cardWidth = twoColumns
-                                      ? (listConstraints.maxWidth - 16) / 2
-                                      : listConstraints.maxWidth;
-                                  return Wrap(
-                                    spacing: 16,
-                                    runSpacing: 16,
-                                    children: [
-                                      for (final item in filtered)
-                                        SizedBox(
-                                          width: cardWidth,
-                                          child: _HistoryCard(item: item),
-                                        ),
-                                    ],
-                                  );
-                                },
                               ),
                           ],
                         ),
                 ),
               ),
+              if (!_loadFailed && filtered.isNotEmpty)
+                SliverPadding(
+                  padding: EdgeInsets.fromLTRB(sidePadding, 0, sidePadding, 40),
+                  sliver: _CollectorLazyCardSliver<WorkHistory>(
+                    items: filtered,
+                    availableWidth: contentWidth,
+                    twoColumnBreakpoint: 860,
+                    itemKey: (item) => item.reportId,
+                    itemBuilder: (item) => _HistoryCard(item: item),
+                  ),
+                ),
             ],
           ),
         );

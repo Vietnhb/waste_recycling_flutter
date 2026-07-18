@@ -8,4 +8,11 @@ void main() {
     expect(statusColor('ON_THE_WAY'), AppPalette.sky);
     expect(statusIcon('On_The_Way'), Icons.local_shipping_rounded);
   });
+
+  test('user-facing status never exposes server enums', () {
+    expect(statusText('RESOLVED'), 'Đã xử lý');
+    expect(statusText('OFFLINE'), 'Ngoài ca');
+    expect(statusText('BUSY'), 'Đang có chuyến');
+    expect(statusText('NEW_SERVER_STATUS'), 'Chưa xác định');
+  });
 }

@@ -25,7 +25,7 @@ String? collectorNextReportActionLabel(String currentStatus) {
     case 'IN_PROGRESS':
       return 'Đã đến · Bắt đầu thu gom';
     case 'COLLECTED':
-      return 'Hoàn tất & gửi bằng chứng';
+      return 'Hoàn tất chuyến';
     default:
       return null;
   }
@@ -373,11 +373,11 @@ class _CollectorStatusDialogState extends State<CollectorStatusDialog> {
           size: 38,
         ),
         title: Text(
-          'Chốt chuyến #${widget.report.id}?',
+          'Hoàn tất chuyến #${widget.report.id}?',
           textAlign: TextAlign.center,
         ),
         content: const Text(
-          'Bằng chứng hiện trường sẽ được khóa và dùng để tính điểm. Hãy kiểm tra ảnh, khối lượng và kết quả phân loại trước khi gửi.',
+          'Sau khi hoàn tất, ảnh và số liệu không thể chỉnh sửa. Hãy kiểm tra ảnh, khối lượng và kết quả phân loại trước khi gửi.',
         ),
         actions: [
           TextButton(
@@ -387,7 +387,7 @@ class _CollectorStatusDialogState extends State<CollectorStatusDialog> {
           FilledButton.icon(
             onPressed: () => Navigator.pop(confirmationContext, true),
             icon: const Icon(Icons.check_circle_rounded),
-            label: const Text('Chốt hoàn tất'),
+            label: const Text('Hoàn tất chuyến'),
           ),
         ],
       ),
@@ -449,7 +449,7 @@ class _CollectorStatusDialogState extends State<CollectorStatusDialog> {
       case 'IN_PROGRESS':
         return 'Bắt đầu thu gom #${widget.report.id}';
       case 'COLLECTED':
-        return 'Bằng chứng chuyến #${widget.report.id}';
+        return 'Xác nhận hoàn tất chuyến #${widget.report.id}';
       default:
         return 'Cập nhật chuyến #${widget.report.id}';
     }
@@ -460,7 +460,7 @@ class _CollectorStatusDialogState extends State<CollectorStatusDialog> {
       case 'ON_THE_WAY':
         return 'Chỉ xác nhận khi bạn bắt đầu di chuyển tới đúng địa chỉ được giao.';
       case 'IN_PROGRESS':
-        return 'Xác nhận sau khi đã đến nơi, liên hệ người bàn giao và bắt đầu thu gom.';
+        return 'Xác nhận sau khi đã đến nơi, gọi cho người liên hệ và bắt đầu thu gom.';
       default:
         return '';
     }
@@ -468,7 +468,7 @@ class _CollectorStatusDialogState extends State<CollectorStatusDialog> {
 
   String get _submitLabel {
     if (_saving) {
-      return _completing ? 'Đang gửi bằng chứng…' : 'Đang cập nhật…';
+      return _completing ? 'Đang hoàn tất chuyến…' : 'Đang cập nhật…';
     }
     return collectorNextReportActionLabel(widget.report.status) ??
         'Cập nhật chuyến';
@@ -499,7 +499,7 @@ class _CollectorStatusDialogState extends State<CollectorStatusDialog> {
                 const SizedBox(height: 18),
                 Semantics(
                   label:
-                      'Chuyển trạng thái từ ${collectorReportStatusText(widget.report.status)} sang $nextLabel',
+                      'Xác nhận $nextLabel cho chuyến số ${widget.report.id}',
                   child: Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(14),
@@ -647,12 +647,16 @@ class _CollectorStatusDialogState extends State<CollectorStatusDialog> {
                   const SizedBox(height: 12),
                   if (_previewBytes case final preview?) ...[
                     Semantics(
-                      label: 'Ảnh bằng chứng đã chọn',
+                      label: 'Ảnh xác nhận đã chọn',
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(AppRadii.md),
                         child: AspectRatio(
                           aspectRatio: 16 / 9,
-                          child: Image.memory(preview, fit: BoxFit.cover),
+                          child: Image.memory(
+                            preview,
+                            fit: BoxFit.cover,
+                            cacheWidth: 1200,
+                          ),
                         ),
                       ),
                     ),

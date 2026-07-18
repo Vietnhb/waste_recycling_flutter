@@ -92,6 +92,8 @@ class _CollectorManagementViewState extends State<CollectorManagementView> {
     final ok = await confirmDialog(
       context,
       'Lưu trữ ${collector.userName.trim().isEmpty ? 'nhân viên #${collector.id}' : collector.userName.trim()}? Tài khoản và toàn bộ lịch sử chuyến vẫn được giữ để đối soát.',
+      title: 'Lưu trữ nhân viên?',
+      confirmLabel: 'Lưu trữ',
     );
     if (!mounted || !ok) return;
     setState(() => _deletingCollectors.add(collector.id));
@@ -158,7 +160,7 @@ class _CollectorManagementViewState extends State<CollectorManagementView> {
                       ],
                       SectionTitle(
                         'Đội thu gom',
-                        eyebrow: 'CON NGƯỜI TẠO NÊN VẬN HÀNH',
+                        eyebrow: 'TRẠNG THÁI ĐỘI NGŨ',
                         subtitle:
                             'Tạo tài khoản hiện trường và nắm nhanh khả năng nhận chuyến của toàn đội.',
                         action: IconButton(
@@ -258,7 +260,7 @@ class _CollectorManagementViewState extends State<CollectorManagementView> {
       ),
       (
         value: '$unavailable',
-        label: 'Ngoại tuyến',
+        label: 'Ngoài ca',
         icon: Icons.nights_stay_rounded,
         color: AppPalette.muted,
       ),
@@ -592,7 +594,7 @@ class _CollectorManagementViewState extends State<CollectorManagementView> {
       case 'ON_THE_WAY':
         return 'Đang đến điểm thu gom';
       case 'OFFLINE':
-        return 'Chưa vào ca';
+        return 'Ngoài ca';
       default:
         return statusText(status);
     }

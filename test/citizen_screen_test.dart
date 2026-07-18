@@ -127,6 +127,112 @@ void main() {
     expect(controller.fakeApi.reportRequests, 2);
   });
 
+  testWidgets('long report history builds cards lazily while scrolling', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(430, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final reports = List.generate(
+      80,
+      (index) => WasteReport(
+        id: index + 1,
+        imageUrl: '',
+        description: 'Báo cáo ${index + 1}',
+        status: 'ASSIGNED',
+        citizenId: 7,
+        citizenName: 'Nguyen An',
+        citizenEmail: 'citizen@example.test',
+        addressId: 3,
+        addressDetail: 'Phường Bến Nghé',
+        addressNumber: '12 Lê Lợi',
+        latitude: 10.7769,
+        longitude: 106.7009,
+        provinceCode: '79',
+        wardCode: '26740',
+        receiverName: 'Nguyen An',
+        phoneNumber: '0900000000',
+        categoryId: 2,
+        categoryName: 'RECYCLABLE',
+      ),
+    );
+    final controller = FakeAppController.citizen(reports: reports);
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: CitizenScreen(controller: controller),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.receipt_long_outlined));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ReportCard).evaluate().length, lessThan(80));
+    expect(find.text('Báo cáo 80'), findsNothing);
+
+    final reportScroll = find.descendant(
+      of: find.byKey(const PageStorageKey('citizen-my-reports-scroll')),
+      matching: find.byWidgetPredicate(
+        (widget) =>
+            widget is Scrollable && widget.axisDirection == AxisDirection.down,
+      ),
+    );
+    await tester.scrollUntilVisible(
+      find.text('Báo cáo 80'),
+      650,
+      scrollable: reportScroll,
+      maxScrolls: 80,
+    );
+
+    expect(find.text('Báo cáo 80'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('realtime refreshes only the visible citizen destination', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(430, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final controller = FakeAppController.citizen();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: CitizenScreen(controller: controller),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    await tester.tap(find.byIcon(Icons.receipt_long_outlined));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(find.byIcon(Icons.home_outlined));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    final reportsBefore = controller.fakeApi.reportRequests;
+    final complaintsBefore = controller.fakeApi.complaintRequests;
+
+    controller.realtime.addTestEvent({
+      'type': 'REPORT_STATUS_CHANGED',
+      'reportId': 42,
+      'status': 'ON_THE_WAY',
+    });
+    await tester.pump(const Duration(milliseconds: 360));
+    await tester.pump();
+
+    expect(controller.fakeApi.reportRequests, reportsBefore + 1);
+    expect(controller.fakeApi.complaintRequests, complaintsBefore);
+    expect(find.byType(AppLoadingView), findsNothing);
+  });
+
   testWidgets('Citizen home fills the available scaffold body', (tester) async {
     tester.view.physicalSize = const Size(1920, 932);
     tester.view.devicePixelRatio = 1;
@@ -292,7 +398,7 @@ void main() {
 
     expect(find.text('Xem hành trình'), findsNothing);
     expect(find.byKey(const ValueKey('citizen-report-map-42')), findsNothing);
-    expect(find.text('Báo cáo của tôi'), findsOneWidget);
+    expect(find.text('Yêu cầu của tôi'), findsOneWidget);
 
     await tester.tap(find.byIcon(Icons.receipt_long_outlined));
     await tester.pump();
