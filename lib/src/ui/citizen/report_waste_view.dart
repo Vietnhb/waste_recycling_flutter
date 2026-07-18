@@ -1121,7 +1121,7 @@ class _WasteScanOverlayState extends State<_WasteScanOverlay>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 1500),
+    duration: const Duration(milliseconds: 2000),
   );
 
   @override
@@ -1148,40 +1148,140 @@ class _WasteScanOverlayState extends State<_WasteScanOverlay>
       child: LayoutBuilder(
         builder: (context, constraints) => Stack(
           children: [
+            // Dark vignette overlay during AI scan
             Positioned.fill(
               child: Container(
-                margin: const EdgeInsets.all(22),
                 decoration: BoxDecoration(
-                  border: Border.all(
-                    color: AppPalette.lime.withValues(alpha: 0.75),
-                    width: 2,
-                  ),
                   borderRadius: BorderRadius.circular(24),
+                  gradient: RadialGradient(
+                    colors: [
+                      Colors.transparent,
+                      Colors.black.withValues(alpha: 0.35),
+                    ],
+                    center: Alignment.center,
+                    radius: 0.9,
+                  ),
                 ),
               ),
             ),
+            
+            // Corner Bracket marks for the camera frame
+            Positioned.fill(
+              child: AnimatedBuilder(
+                animation: _controller,
+                builder: (context, child) {
+                  final opacity = 0.4 + 0.4 * (1.0 - _controller.value);
+                  return Opacity(
+                    opacity: opacity,
+                    child: Padding(
+                      padding: const EdgeInsets.all(22),
+                      child: CustomPaint(
+                        painter: _ScannerFramePainter(color: AppPalette.lime),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            
+            // Neon Scanning laser line with vertical movement and gradient trail
             AnimatedBuilder(
               animation: _controller,
-              builder: (context, child) => Positioned(
-                left: 28,
-                right: 28,
-                top: 30 + (constraints.maxHeight - 60) * _controller.value,
-                child: child!,
-              ),
-              child: Container(
-                height: 3,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [
-                      Colors.transparent,
-                      AppPalette.lime,
-                      Colors.transparent,
-                    ],
-                  ),
-                  boxShadow: const [
-                    BoxShadow(color: AppPalette.lime, blurRadius: 10),
+              builder: (context, child) {
+                final topOffset = 30 + (constraints.maxHeight - 60) * _controller.value;
+                return Stack(
+                  children: [
+                    // Glow trail behind the laser line
+                    Positioned(
+                      left: 28,
+                      right: 28,
+                      top: topOffset - 24,
+                      child: Container(
+                        height: 24,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              Colors.transparent,
+                              AppPalette.lime.withValues(alpha: 0.12),
+                            ],
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                          ),
+                        ),
+                      ),
+                    ),
+                    // Solid glowing laser line
+                    Positioned(
+                      left: 28,
+                      right: 28,
+                      top: topOffset,
+                      child: Container(
+                        height: 3.5,
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [
+                              Colors.transparent,
+                              AppPalette.lime,
+                              Colors.transparent,
+                            ],
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppPalette.lime.withValues(alpha: 0.8),
+                              blurRadius: 12,
+                              spreadRadius: 1,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   ],
-                ),
+                );
+              },
+            ),
+            
+            // Tech-style HUD target details in center
+            Center(
+              child: AnimatedBuilder(
+                animation: _controller,
+                builder: (context, child) {
+                  return Container(
+                    width: 72,
+                    height: 72,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: AppPalette.lime.withValues(alpha: 0.28 + 0.25 * _controller.value),
+                        width: 1.5,
+                      ),
+                    ),
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: AppPalette.lime.withValues(alpha: 0.15 + 0.15 * (1.0 - _controller.value)),
+                              width: 1.0,
+                            ),
+                          ),
+                        ),
+                        // Tiny target dot
+                        Container(
+                          width: 6,
+                          height: 6,
+                          decoration: const BoxDecoration(
+                            color: AppPalette.lime,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
               ),
             ),
           ],
@@ -1189,6 +1289,61 @@ class _WasteScanOverlayState extends State<_WasteScanOverlay>
       ),
     );
   }
+}
+
+class _ScannerFramePainter extends CustomPainter {
+  _ScannerFramePainter({required this.color});
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 3.2
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+
+    const len = 20.0;
+
+    // Top-Left corner bracket
+    canvas.drawPath(
+      ui.Path()
+        ..moveTo(0, len)
+        ..lineTo(0, 0)
+        ..lineTo(len, 0),
+      paint,
+    );
+
+    // Top-Right corner bracket
+    canvas.drawPath(
+      ui.Path()
+        ..moveTo(size.width - len, 0)
+        ..lineTo(size.width, 0)
+        ..lineTo(size.width, len),
+      paint,
+    );
+
+    // Bottom-Left corner bracket
+    canvas.drawPath(
+      ui.Path()
+        ..moveTo(0, size.height - len)
+        ..lineTo(0, size.height)
+        ..lineTo(len, size.height),
+      paint,
+    );
+
+    // Bottom-Right corner bracket
+    canvas.drawPath(
+      ui.Path()
+        ..moveTo(size.width - len, size.height)
+        ..lineTo(size.width, size.height)
+        ..lineTo(size.width, size.height - len),
+      paint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 String _recognitionStrength(double confidence, bool requiresConfirmation) {
@@ -1634,21 +1789,31 @@ class _AiClassificationCard extends StatelessWidget {
                 ),
               )
             else
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppPalette.night,
-                    foregroundColor: Colors.white,
+              AnimatedTap(
+                onTap: enabled && suggestionLabel != null ? onAccept : null,
+                child: Container(
+                  height: 48,
+                  decoration: BoxDecoration(
+                    gradient: enabled && suggestionLabel != null ? AppStyles.darkGradient : null,
+                    color: enabled && suggestionLabel != null ? null : AppPalette.muted.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(AppRadii.md),
                   ),
-                  onPressed: enabled && suggestionLabel != null
-                      ? onAccept
-                      : null,
-                  icon: const Icon(Icons.touch_app_rounded),
-                  label: Text(
-                    suggestionLabel == null
-                        ? 'Danh mục này chưa được hỗ trợ'
-                        : 'Dùng gợi ý $suggestionLabel',
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.touch_app_rounded, color: Colors.white, size: 18),
+                      const SizedBox(width: 8),
+                      Text(
+                        suggestionLabel == null
+                            ? 'Danh mục này chưa được hỗ trợ'
+                            : 'Dùng gợi ý $suggestionLabel',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),

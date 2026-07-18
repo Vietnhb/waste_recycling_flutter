@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'dart:ui';
 
 import '../../controllers/app_controller.dart';
 import '../shared/widgets.dart';
@@ -349,285 +350,99 @@ class AuthShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppPalette.cream,
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          final wide = constraints.maxWidth >= 920;
-          if (wide) {
-            return Row(
-              children: [
-                const Expanded(flex: 10, child: _AuthVisual()),
-                Expanded(
-                  flex: 11,
-                  child: SafeArea(
-                    child: _AuthFormRegion(
-                      eyebrow: eyebrow,
-                      title: title,
-                      subtitle: subtitle,
-                      showWordmark: true,
-                      onBack: () => Navigator.maybePop(context),
-                      child: child,
-                    ),
-                  ),
-                ),
-              ],
-            );
-          }
-
-          return ListView(
-            padding: EdgeInsets.zero,
-            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            children: [
-              SizedBox(
-                height: constraints.maxWidth < 380 ? 235 : 270,
-                child: _AuthVisual(
-                  compact: true,
-                  onBack: () => Navigator.maybePop(context),
-                ),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.asset(
+            'assets/images/eco_city_hero.jpg',
+            fit: BoxFit.cover,
+            alignment: const Alignment(0, -0.1),
+          ),
+          Positioned.fill(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+              child: Container(
+                color: AppPalette.night.withValues(alpha: 0.52),
               ),
-              Transform.translate(
-                offset: const Offset(0, -28),
+            ),
+          ),
+          SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
                 child: Container(
-                  padding: const EdgeInsets.fromLTRB(20, 30, 20, 12),
-                  decoration: const BoxDecoration(
-                    color: AppPalette.cream,
-                    borderRadius: BorderRadius.vertical(
-                      top: Radius.circular(AppRadii.xl),
+                  constraints: const BoxConstraints(maxWidth: 480),
+                  padding: const EdgeInsets.all(28),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.88),
+                    borderRadius: BorderRadius.circular(30),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.32),
+                      width: 1.2,
                     ),
-                  ),
-                  child: Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 520),
-                      child: _AuthFormCopy(
-                        eyebrow: eyebrow,
-                        title: title,
-                        subtitle: subtitle,
-                        child: child,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.18),
+                        blurRadius: 36,
+                        offset: const Offset(0, 16),
                       ),
-                    ),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          IconButton(
+                            tooltip: 'Quay lại',
+                            onPressed: () => Navigator.maybePop(context),
+                            icon: const Icon(Icons.arrow_back_rounded),
+                            style: IconButton.styleFrom(
+                              backgroundColor: AppPalette.night.withValues(alpha: 0.06),
+                              foregroundColor: AppPalette.night,
+                            ),
+                          ),
+                          const Spacer(),
+                          const _AuthWordmark(),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                      Text(
+                        eyebrow.toUpperCase(),
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                              color: AppPalette.primary,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 1.4,
+                            ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        title,
+                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                              fontWeight: FontWeight.w900,
+                              color: AppPalette.night,
+                              letterSpacing: -0.6,
+                            ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        subtitle,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: AppPalette.muted,
+                              height: 1.4,
+                            ),
+                      ),
+                      const SizedBox(height: 24),
+                      child,
+                    ],
                   ),
                 ),
               ),
-            ],
-          );
-        },
+            ),
+          ),
+        ],
       ),
-    );
-  }
-}
-
-class _AuthFormRegion extends StatelessWidget {
-  const _AuthFormRegion({
-    required this.eyebrow,
-    required this.title,
-    required this.subtitle,
-    required this.child,
-    required this.showWordmark,
-    required this.onBack,
-  });
-
-  final String eyebrow;
-  final String title;
-  final String subtitle;
-  final Widget child;
-  final bool showWordmark;
-  final VoidCallback onBack;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 590),
-        child: ListView(
-          shrinkWrap: true,
-          padding: const EdgeInsets.fromLTRB(34, 20, 34, 30),
-          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-          children: [
-            Row(
-              children: [
-                IconButton(
-                  tooltip: 'Quay lại',
-                  onPressed: onBack,
-                  style: IconButton.styleFrom(
-                    backgroundColor: AppPalette.surface,
-                    side: const BorderSide(color: AppPalette.line),
-                  ),
-                  icon: const Icon(Icons.arrow_back_rounded),
-                ),
-                const Spacer(),
-                if (showWordmark) const _AuthWordmark(),
-              ],
-            ),
-            const SizedBox(height: 46),
-            _AuthFormCopy(
-              eyebrow: eyebrow,
-              title: title,
-              subtitle: subtitle,
-              child: child,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _AuthFormCopy extends StatelessWidget {
-  const _AuthFormCopy({
-    required this.eyebrow,
-    required this.title,
-    required this.subtitle,
-    required this.child,
-  });
-
-  final String eyebrow;
-  final String title;
-  final String subtitle;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(
-          eyebrow,
-          style: const TextStyle(
-            color: AppPalette.primary,
-            fontSize: 11,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 1.35,
-          ),
-        ),
-        const SizedBox(height: 10),
-        Text(title, style: Theme.of(context).textTheme.headlineMedium),
-        const SizedBox(height: 10),
-        Text(
-          subtitle,
-          style: Theme.of(
-            context,
-          ).textTheme.bodyLarge?.copyWith(color: AppPalette.muted),
-        ),
-        const SizedBox(height: 26),
-        AppSurface(
-          padding: const EdgeInsets.all(20),
-          shadow: true,
-          child: child,
-        ),
-      ],
-    );
-  }
-}
-
-class _AuthVisual extends StatelessWidget {
-  const _AuthVisual({this.compact = false, this.onBack});
-
-  final bool compact;
-  final VoidCallback? onBack;
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        Image.asset(
-          'assets/images/eco_city_hero.jpg',
-          fit: BoxFit.cover,
-          alignment: compact
-              ? const Alignment(0, 0.12)
-              : const Alignment(0, -0.12),
-        ),
-        DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: compact
-                  ? [
-                      AppPalette.night.withValues(alpha: 0.18),
-                      AppPalette.night.withValues(alpha: 0.76),
-                    ]
-                  : [
-                      AppPalette.night.withValues(alpha: 0.08),
-                      AppPalette.night.withValues(alpha: 0.9),
-                    ],
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-            ),
-          ),
-        ),
-        SafeArea(
-          child: Padding(
-            padding: EdgeInsets.all(compact ? 16 : 30),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    if (onBack != null) ...[
-                      IconButton(
-                        tooltip: 'Quay lại',
-                        onPressed: onBack,
-                        style: IconButton.styleFrom(
-                          backgroundColor: AppPalette.surface.withValues(
-                            alpha: 0.92,
-                          ),
-                          foregroundColor: AppPalette.night,
-                        ),
-                        icon: const Icon(Icons.arrow_back_rounded),
-                      ),
-                      const SizedBox(width: 10),
-                    ],
-                    if (compact)
-                      const Expanded(
-                        child: _AuthWordmark(onDark: true, flexible: true),
-                      )
-                    else
-                      const _AuthWordmark(onDark: true),
-                  ],
-                ),
-                const Spacer(),
-                if (!compact) ...[
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 7,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppPalette.lime,
-                      borderRadius: BorderRadius.circular(AppRadii.pill),
-                    ),
-                    child: const Text(
-                      'MỖI NGÀY MỘT CHÚT XANH',
-                      style: TextStyle(
-                        color: AppPalette.night,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1.1,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Một thành phố đẹp\nbắt đầu từ cách ta\nchăm sóc nó.',
-                    style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w900,
-                      height: 1.04,
-                      letterSpacing: -1.3,
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  Text(
-                    'Cùng cộng đồng đưa từng món rác trở lại đúng vòng tuần hoàn.',
-                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      color: Colors.white.withValues(alpha: 0.76),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-      ],
     );
   }
 }

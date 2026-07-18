@@ -250,19 +250,29 @@ class StatusChip extends StatelessWidget {
       label: 'Trạng thái: $label',
       child: ExcludeSemantics(
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.12),
+            color: color.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(AppRadii.pill),
-            border: Border.all(color: color.withValues(alpha: 0.18)),
+            border: Border.all(color: color.withValues(alpha: 0.16), width: 1.1),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                width: 7,
-                height: 7,
-                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+                width: 6,
+                height: 6,
+                decoration: BoxDecoration(
+                  color: color,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: color.withValues(alpha: 0.7),
+                      blurRadius: 6,
+                      spreadRadius: 1.2,
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(width: 7),
               Flexible(
@@ -272,11 +282,12 @@ class StatusChip extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: Color.alphaBlend(
-                      color.withValues(alpha: 0.3),
+                      color.withValues(alpha: 0.4),
                       AppPalette.ink,
                     ),
                     fontWeight: FontWeight.w900,
-                    fontSize: 12,
+                    fontSize: 11.5,
+                    letterSpacing: -0.1,
                   ),
                 ),
               ),
@@ -383,41 +394,59 @@ class EmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 30),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 34),
       decoration: BoxDecoration(
         color: AppPalette.surface,
         borderRadius: BorderRadius.circular(AppRadii.lg),
-        border: Border.all(color: AppPalette.line.withValues(alpha: 0.65)),
+        border: Border.all(color: AppPalette.line.withValues(alpha: 0.55)),
+        boxShadow: [
+          BoxShadow(
+            color: AppPalette.night.withValues(alpha: 0.02),
+            blurRadius: 24,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 68,
-            height: 68,
+            width: 72,
+            height: 72,
             decoration: BoxDecoration(
               gradient: const LinearGradient(
-                colors: [AppPalette.mintStrong, AppPalette.cream],
+                colors: [AppPalette.mint, AppPalette.mintStrong],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
-              borderRadius: BorderRadius.circular(24),
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: AppPalette.primary.withValues(alpha: 0.08),
+                  blurRadius: 16,
+                  offset: const Offset(0, 6),
+                ),
+              ],
             ),
-            child: Icon(icon, color: AppPalette.primaryDark, size: 30),
+            child: Icon(icon, color: AppPalette.primary, size: 32),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 18),
           Text(
             title,
             textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.titleMedium,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w900,
+                  color: AppPalette.night,
+                ),
           ),
           const SizedBox(height: 6),
           Text(
             text,
             textAlign: TextAlign.center,
-            style: Theme.of(
-              context,
-            ).textTheme.bodyMedium?.copyWith(color: AppPalette.muted),
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: AppPalette.muted,
+                  height: 1.4,
+                ),
           ),
         ],
       ),
@@ -526,10 +555,19 @@ class ReportCard extends StatelessWidget {
           'Yêu cầu thu gom số ${report.id}, $category, ${statusText(report.status)}',
       child: Padding(
         padding: const EdgeInsets.only(bottom: 14),
-        child: Card(
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(AppRadii.lg),
+        child: AnimatedTap(
+          onTap: onTap,
+          child: Container(
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              color: AppPalette.surface,
+              borderRadius: BorderRadius.circular(AppRadii.lg),
+              border: Border.all(
+                color: AppPalette.line.withValues(alpha: 0.55),
+                width: 1.1,
+              ),
+              boxShadow: AppStyles.cardShadows,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -565,10 +603,21 @@ class ReportCard extends StatelessWidget {
                               vertical: 7,
                             ),
                             decoration: BoxDecoration(
-                              color: AppPalette.surface.withValues(alpha: 0.93),
+                              color: AppPalette.surface.withValues(alpha: 0.95),
                               borderRadius: BorderRadius.circular(
                                 AppRadii.pill,
                               ),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.3),
+                                width: 1,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.04),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
                             ),
                             child: Row(
                               children: [
@@ -583,6 +632,7 @@ class ReportCard extends StatelessWidget {
                                   style: const TextStyle(
                                     fontWeight: FontWeight.w900,
                                     fontSize: 12,
+                                    letterSpacing: -0.2,
                                   ),
                                 ),
                               ],
@@ -606,6 +656,7 @@ class ReportCard extends StatelessWidget {
                                     ?.copyWith(
                                       color: Colors.white,
                                       letterSpacing: 1.1,
+                                      fontWeight: FontWeight.w900,
                                     ),
                               ),
                               const Spacer(),
@@ -645,7 +696,11 @@ class ReportCard extends StatelessWidget {
                             Expanded(
                               child: Text(
                                 '#${report.id} · $category',
-                                style: Theme.of(context).textTheme.titleMedium,
+                                style: Theme.of(context).textTheme.titleMedium
+                                    ?.copyWith(
+                                      fontWeight: FontWeight.w900,
+                                      color: AppPalette.night,
+                                    ),
                               ),
                             ),
                             const SizedBox(width: 10),
@@ -661,7 +716,11 @@ class ReportCard extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(
                             context,
-                          ).textTheme.titleMedium?.copyWith(height: 1.28),
+                          ).textTheme.titleMedium?.copyWith(
+                                height: 1.28,
+                                fontWeight: FontWeight.w900,
+                                color: AppPalette.night,
+                              ),
                         ),
                       if (compact && report.description.isNotEmpty) ...[
                         const SizedBox(height: 7),
@@ -669,7 +728,9 @@ class ReportCard extends StatelessWidget {
                           report.description,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodyMedium,
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                color: AppPalette.muted,
+                              ),
                         ),
                       ],
                       const SizedBox(height: 13),
@@ -1069,47 +1130,77 @@ class AppScreenHeader extends StatelessWidget {
   }
 }
 
-class AppLoadingView extends StatelessWidget {
+class AppLoadingView extends StatefulWidget {
   const AppLoadingView({super.key, this.label = 'Đang tải…'});
 
   final String label;
 
   @override
+  State<AppLoadingView> createState() => _AppLoadingViewState();
+}
+
+class _AppLoadingViewState extends State<AppLoadingView>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scaleAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    )..repeat(reverse: true);
+    _scaleAnimation = Tween<double>(begin: 0.9, end: 1.1).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final disableAnimations =
-        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
     return Semantics(
       liveRegion: true,
-      label: label,
+      label: widget.label,
       child: ExcludeSemantics(
         child: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TweenAnimationBuilder<double>(
-                tween: Tween(begin: disableAnimations ? 1 : 0.92, end: 1),
-                duration: disableAnimations ? Duration.zero : AppMotion.slow,
-                curve: Curves.easeOutBack,
-                builder: (_, scale, child) =>
-                    Transform.scale(scale: scale, child: child),
-                child: const AppBrandMark(size: 62),
-              ),
-              const SizedBox(height: 20),
-              Text(
-                label,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: AppPalette.muted,
-                  fontWeight: FontWeight.w700,
+              AnimatedBuilder(
+                animation: _scaleAnimation,
+                builder: (_, child) => Transform.scale(
+                  scale: _scaleAnimation.value,
+                  child: child,
                 ),
+                child: const AppBrandMark(size: 64),
               ),
-              const SizedBox(height: 16),
-              if (!disableAnimations)
-                const SizedBox(
-                  width: 120,
+              const SizedBox(height: 24),
+              Text(
+                widget.label,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: AppPalette.night,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.1,
+                    ),
+              ),
+              const SizedBox(height: 18),
+              const SizedBox(
+                width: 140,
+                height: 3,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.all(Radius.circular(99)),
                   child: LinearProgressIndicator(
-                    borderRadius: BorderRadius.all(Radius.circular(99)),
+                    backgroundColor: AppPalette.mintStrong,
+                    color: AppPalette.primary,
                   ),
                 ),
+              ),
             ],
           ),
         ),
@@ -1225,3 +1316,95 @@ class _AppTabActivity extends InheritedWidget {
   bool updateShouldNotify(_AppTabActivity oldWidget) =>
       active != oldWidget.active;
 }
+
+class AnimatedTap extends StatefulWidget {
+  const AnimatedTap({
+    super.key,
+    required this.child,
+    required this.onTap,
+    this.onLongPress,
+    this.scale = 0.96,
+    this.duration = const Duration(milliseconds: 110),
+  });
+
+  final Widget child;
+  final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
+  final double scale;
+  final Duration duration;
+
+  @override
+  State<AnimatedTap> createState() => _AnimatedTapState();
+}
+
+class _AnimatedTapState extends State<AnimatedTap>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scaleAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: widget.duration,
+      lowerBound: 0.0,
+      upperBound: 1.0,
+    );
+    _scaleAnimation = Tween<double>(
+      begin: 1.0,
+      end: widget.scale,
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeInOut,
+    ));
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onTapDown(TapDownDetails details) {
+    if (widget.onTap != null || widget.onLongPress != null) {
+      _controller.forward();
+    }
+  }
+
+  void _onTapUp(TapUpDetails details) {
+    if (widget.onTap != null || widget.onLongPress != null) {
+      _controller.reverse();
+    }
+  }
+
+  void _onTapCancel() {
+    if (widget.onTap != null || widget.onLongPress != null) {
+      _controller.reverse();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasAction = widget.onTap != null || widget.onLongPress != null;
+    if (!hasAction) return widget.child;
+
+    return GestureDetector(
+      onTapDown: _onTapDown,
+      onTapUp: _onTapUp,
+      onTapCancel: _onTapCancel,
+      onTap: widget.onTap,
+      onLongPress: widget.onLongPress,
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedBuilder(
+        animation: _scaleAnimation,
+        builder: (context, child) => Transform.scale(
+          scale: _scaleAnimation.value,
+          child: child,
+        ),
+        child: widget.child,
+      ),
+    );
+  }
+}
+

@@ -1359,12 +1359,13 @@ class _RankingPodium extends StatelessWidget {
             clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
               gradient: const LinearGradient(
-                colors: [AppPalette.cream, AppPalette.mint],
+                colors: [AppPalette.surface, AppPalette.canvas],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
               borderRadius: BorderRadius.circular(AppRadii.xl),
-              border: Border.all(color: AppPalette.line.withValues(alpha: 0.7)),
+              border: Border.all(color: AppPalette.line.withValues(alpha: 0.55), width: 1.1),
+              boxShadow: AppStyles.cardShadows,
             ),
             child: useList
                 ? Padding(
@@ -1553,10 +1554,19 @@ class _PodiumPerson extends StatelessWidget {
                   color: isCurrentUser ? AppPalette.primary : baseColor,
                   width: isCurrentUser ? 3 : 2,
                 ),
+                boxShadow: isCurrentUser
+                    ? [
+                        BoxShadow(
+                          color: AppPalette.primary.withValues(alpha: 0.25),
+                          blurRadius: 10,
+                          spreadRadius: 1,
+                        ),
+                      ]
+                    : null,
               ),
               child: CircleAvatar(
                 radius: winner ? 27 : 23,
-                backgroundColor: baseColor.withValues(alpha: 0.2),
+                backgroundColor: baseColor.withValues(alpha: 0.18),
                 child: Text(
                   _initial(user.userName),
                   style: const TextStyle(
@@ -1572,15 +1582,18 @@ class _PodiumPerson extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.labelLarge,
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                    fontWeight: FontWeight.w900,
+                    color: AppPalette.night,
+                  ),
             ),
             const SizedBox(height: 2),
             Text(
               '${user.totalPoints} điểm',
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: AppPalette.primaryDark,
-                fontWeight: FontWeight.w900,
-              ),
+                    color: AppPalette.primaryDark,
+                    fontWeight: FontWeight.w900,
+                  ),
             ),
             const SizedBox(height: 9),
             TweenAnimationBuilder<double>(
@@ -1594,22 +1607,29 @@ class _PodiumPerson extends StatelessWidget {
                 padding: const EdgeInsets.only(top: 13),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [baseColor.withValues(alpha: 0.68), baseColor],
+                    colors: [baseColor.withValues(alpha: 0.76), baseColor],
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                   ),
                   borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(18),
+                    top: Radius.circular(20),
                   ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: baseColor.withValues(alpha: 0.24),
+                      blurRadius: 14,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
                 ),
                 child: child,
               ),
               child: Text(
                 '${user.rank}',
                 style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  color: AppPalette.night,
-                  fontWeight: FontWeight.w900,
-                ),
+                      color: AppPalette.night,
+                      fontWeight: FontWeight.w900,
+                    ),
               ),
             ),
           ],
@@ -1661,122 +1681,134 @@ class _RankingRow extends StatelessWidget {
       excludeSemantics: true,
       label:
           'Hạng ${user.rank}, ${user.userName}, ${user.totalPoints} điểm, ${user.totalReports} chuyến${isCurrentUser ? ', là bạn' : ''}',
-      child: Container(
-        key: ValueKey('ranking-user-${user.userId}'),
-        margin: const EdgeInsets.only(bottom: 9),
-        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
-        decoration: BoxDecoration(
-          color: isCurrentUser ? AppPalette.mintStrong : AppPalette.surface,
-          borderRadius: BorderRadius.circular(AppRadii.md),
-          border: Border.all(
-            color: isCurrentUser ? AppPalette.primary : AppPalette.line,
-            width: isCurrentUser ? 1.4 : 1,
-          ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 42,
-              height: 42,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: isCurrentUser
-                    ? AppPalette.night
-                    : AppPalette.surfaceMuted,
-                borderRadius: BorderRadius.circular(15),
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 9),
+        child: AnimatedTap(
+          onTap: () {},
+          child: Container(
+            key: ValueKey('ranking-user-${user.userId}'),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: isCurrentUser ? AppPalette.mintStrong.withValues(alpha: 0.8) : AppPalette.surface,
+              borderRadius: BorderRadius.circular(AppRadii.md),
+              border: Border.all(
+                color: isCurrentUser ? AppPalette.primary : AppPalette.line.withValues(alpha: 0.55),
+                width: isCurrentUser ? 1.4 : 1.1,
               ),
-              child: Text(
-                '#${user.rank}',
-                style: TextStyle(
-                  color: isCurrentUser ? AppPalette.lime : AppPalette.muted,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
+              boxShadow: isCurrentUser ? AppStyles.glowShadows : AppStyles.cardShadows,
             ),
-            const SizedBox(width: 10),
-            CircleAvatar(
-              radius: 20,
-              backgroundColor: AppPalette.primary.withValues(alpha: 0.13),
-              child: Text(
-                _initial(user.userName),
-                style: const TextStyle(
-                  color: AppPalette.night,
-                  fontWeight: FontWeight.w900,
+            child: Row(
+              children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: isCurrentUser
+                        ? AppPalette.night
+                        : AppPalette.surfaceMuted,
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                  child: Text(
+                    '#${user.rank}',
+                    style: TextStyle(
+                      color: isCurrentUser ? AppPalette.lime : AppPalette.muted,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
                 ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+                const SizedBox(width: 12),
+                CircleAvatar(
+                  radius: 20,
+                  backgroundColor: AppPalette.primary.withValues(alpha: 0.13),
+                  child: Text(
+                    _initial(user.userName),
+                    style: const TextStyle(
+                      color: AppPalette.night,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Flexible(
-                        child: Text(
-                          user.userName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.titleSmall
-                              ?.copyWith(fontWeight: FontWeight.w900),
-                        ),
-                      ),
-                      if (isCurrentUser) ...[
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 7,
-                            vertical: 3,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppPalette.night,
-                            borderRadius: BorderRadius.circular(AppRadii.pill),
-                          ),
-                          child: const Text(
-                            'BẠN',
-                            style: TextStyle(
-                              color: AppPalette.lime,
-                              fontSize: 8,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 0.6,
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              user.userName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.titleSmall
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.w900,
+                                    color: AppPalette.night,
+                                  ),
                             ),
                           ),
-                        ),
-                      ],
+                          if (isCurrentUser) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 7,
+                                vertical: 3,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppPalette.night,
+                                borderRadius: BorderRadius.circular(AppRadii.pill),
+                              ),
+                              child: const Text(
+                                'BẠN',
+                                style: TextStyle(
+                                  color: AppPalette.lime,
+                                  fontSize: 8,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 0.6,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${user.totalReports} chuyến đã xác nhận',
+                        style: Theme.of(
+                          context,
+                        ).textTheme.bodySmall?.copyWith(
+                              color: AppPalette.muted,
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
                     ],
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '${user.totalReports} chuyến đã xác nhận',
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodySmall?.copyWith(color: AppPalette.muted),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  _formatRankingNumber(user.totalPoints),
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: AppPalette.primaryDark,
-                    fontWeight: FontWeight.w900,
-                  ),
                 ),
-                const Text(
-                  'điểm',
-                  style: TextStyle(
-                    color: AppPalette.muted,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                  ),
+                const SizedBox(width: 8),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      _formatRankingNumber(user.totalPoints),
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: AppPalette.primaryDark,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const Text(
+                      'điểm',
+                      style: TextStyle(
+                        color: AppPalette.muted,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
-          ],
+          ),
         ),
       ),
     );

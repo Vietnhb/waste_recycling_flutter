@@ -30,6 +30,76 @@ abstract final class AppPalette {
   static const danger = Color(0xFFD94F4F);
 }
 
+abstract final class AppStyles {
+  static const primaryGradient = LinearGradient(
+    colors: [AppPalette.primary, AppPalette.jade],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  static const darkGradient = LinearGradient(
+    colors: [AppPalette.night, Color(0xFF134E47)],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  static const accentGradient = LinearGradient(
+    colors: [AppPalette.jade, AppPalette.lime],
+    begin: Alignment.centerLeft,
+    end: Alignment.centerRight,
+  );
+
+  static const limeGradient = LinearGradient(
+    colors: [AppPalette.lime, Color(0xFFB1DD55)],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  static final glassGradient = LinearGradient(
+    colors: [
+      Colors.white.withValues(alpha: 0.18),
+      Colors.white.withValues(alpha: 0.05),
+    ],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  static final cardShadows = [
+    BoxShadow(
+      color: AppPalette.night.withValues(alpha: 0.04),
+      blurRadius: 16,
+      offset: const Offset(0, 8),
+    ),
+    BoxShadow(
+      color: AppPalette.night.withValues(alpha: 0.02),
+      blurRadius: 32,
+      offset: const Offset(0, 16),
+    ),
+  ];
+
+  static final glowShadows = [
+    BoxShadow(
+      color: AppPalette.primary.withValues(alpha: 0.16),
+      blurRadius: 20,
+      offset: const Offset(0, 8),
+    ),
+  ];
+
+  static final limeGlowShadows = [
+    BoxShadow(
+      color: AppPalette.lime.withValues(alpha: 0.25),
+      blurRadius: 18,
+      offset: const Offset(0, 6),
+    ),
+  ];
+
+  static final glassBorder = Border.all(
+    color: Colors.white.withValues(alpha: 0.2),
+    width: 1.2,
+  );
+}
+
+
 abstract final class AppSpacing {
   static const xxs = 4.0;
   static const xs = 8.0;

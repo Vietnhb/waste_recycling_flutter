@@ -433,16 +433,16 @@ class _LandingHero extends StatelessWidget {
         return Container(
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [AppPalette.night, Color(0xFF0D4A41)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
+            gradient: AppStyles.darkGradient,
             borderRadius: BorderRadius.circular(wide ? 42 : 30),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.12),
+              width: 1.2,
+            ),
             boxShadow: [
               BoxShadow(
-                color: AppPalette.night.withValues(alpha: 0.16),
-                blurRadius: 44,
+                color: AppPalette.night.withValues(alpha: 0.22),
+                blurRadius: 40,
                 offset: const Offset(0, 20),
               ),
             ],
@@ -457,7 +457,7 @@ class _LandingHero extends StatelessWidget {
                   height: 300,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: AppPalette.jade.withValues(alpha: 0.11),
+                    color: AppPalette.jade.withValues(alpha: 0.12),
                   ),
                 ),
               ),
@@ -471,13 +471,13 @@ class _LandingHero extends StatelessWidget {
                     shape: BoxShape.circle,
                     border: Border.all(
                       width: 50,
-                      color: AppPalette.lime.withValues(alpha: 0.05),
+                      color: AppPalette.lime.withValues(alpha: 0.06),
                     ),
                   ),
                 ),
               ),
               Padding(
-                padding: EdgeInsets.all(wide ? 34 : 20),
+                padding: EdgeInsets.all(wide ? 38 : 22),
                 child: wide
                     ? Row(
                         crossAxisAlignment: CrossAxisAlignment.center,
@@ -525,11 +525,11 @@ class _HeroCopy extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.1),
+            color: Colors.white.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(AppRadii.pill),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
           ),
           child: const Row(
             mainAxisSize: MainAxisSize.min,
@@ -542,7 +542,7 @@ class _HeroCopy extends StatelessWidget {
                   color: Colors.white,
                   fontSize: 11,
                   fontWeight: FontWeight.w900,
-                  letterSpacing: 1.15,
+                  letterSpacing: 1.25,
                 ),
               ),
             ],
@@ -561,9 +561,9 @@ class _HeroCopy extends StatelessWidget {
           ),
           style: Theme.of(context).textTheme.displayMedium?.copyWith(
             color: Colors.white,
-            fontSize: MediaQuery.sizeOf(context).width < 420 ? 40 : 52,
+            fontSize: MediaQuery.sizeOf(context).width < 420 ? 42 : 54,
             height: 1.01,
-            letterSpacing: -1.9,
+            letterSpacing: -2.0,
           ),
         ),
         const SizedBox(height: 18),
@@ -572,32 +572,73 @@ class _HeroCopy extends StatelessWidget {
           child: Text(
             'Gửi vị trí cần thu gom trong vài chạm, theo dõi hành trình xử lý và biến mỗi lần phân loại đúng thành điểm xanh có ý nghĩa.',
             style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-              color: Colors.white.withValues(alpha: 0.78),
+              color: Colors.white.withValues(alpha: 0.8),
               height: 1.55,
+              letterSpacing: -0.1,
             ),
           ),
         ),
-        const SizedBox(height: 28),
+        const SizedBox(height: 32),
         LayoutBuilder(
           builder: (context, constraints) {
             final stacked = constraints.maxWidth < 390;
-            final primary = FilledButton.icon(
-              onPressed: onCreateAccount,
-              style: FilledButton.styleFrom(
-                backgroundColor: AppPalette.lime,
-                foregroundColor: AppPalette.night,
+            final primary = AnimatedTap(
+              onTap: onCreateAccount,
+              child: Container(
+                height: 54,
+                padding: const EdgeInsets.symmetric(horizontal: 22),
+                decoration: BoxDecoration(
+                  gradient: AppStyles.limeGradient,
+                  borderRadius: BorderRadius.circular(AppRadii.md),
+                  boxShadow: AppStyles.limeGlowShadows,
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.arrow_forward_rounded, color: AppPalette.night),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Bắt đầu sống xanh',
+                      style: TextStyle(
+                        color: AppPalette.night,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 14.5,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              icon: const Icon(Icons.arrow_forward_rounded),
-              label: const Text('Bắt đầu sống xanh'),
             );
-            final secondary = OutlinedButton.icon(
-              onPressed: onLogin,
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.white,
-                side: BorderSide(color: Colors.white.withValues(alpha: 0.28)),
+            final secondary = AnimatedTap(
+              onTap: onLogin,
+              child: Container(
+                height: 54,
+                padding: const EdgeInsets.symmetric(horizontal: 22),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(AppRadii.md),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.28),
+                    width: 1.2,
+                  ),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.person_outline_rounded, color: Colors.white),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Tôi đã có tài khoản',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 14.5,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              icon: const Icon(Icons.person_outline_rounded),
-              label: const Text('Tôi đã có tài khoản'),
             );
             if (stacked) {
               return Column(
@@ -606,8 +647,8 @@ class _HeroCopy extends StatelessWidget {
               );
             }
             return Wrap(
-              spacing: 10,
-              runSpacing: 10,
+              spacing: 12,
+              runSpacing: 12,
               children: [primary, secondary],
             );
           },
@@ -1067,42 +1108,54 @@ class _FeatureStory extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AppSurface(
-      padding: const EdgeInsets.all(22),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.13),
-                  borderRadius: BorderRadius.circular(AppRadii.md),
+    return AnimatedTap(
+      onTap: () {},
+      child: AppSurface(
+        padding: const EdgeInsets.all(22),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.13),
+                    borderRadius: BorderRadius.circular(AppRadii.md),
+                  ),
+                  child: Icon(icon, color: color, size: 27),
                 ),
-                child: Icon(icon, color: color, size: 27),
-              ),
-              const Spacer(),
-              Text(
-                number,
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  color: AppPalette.line,
-                  fontWeight: FontWeight.w900,
+                const Spacer(),
+                Text(
+                  number,
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    color: AppPalette.line.withValues(alpha: 0.6),
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          Text(title, style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 9),
-          Text(
-            text,
-            style: Theme.of(
-              context,
-            ).textTheme.bodyMedium?.copyWith(color: AppPalette.muted),
-          ),
-        ],
+              ],
+            ),
+            const SizedBox(height: 24),
+            Text(
+              title,
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w900,
+                    color: AppPalette.night,
+                  ),
+            ),
+            const SizedBox(height: 9),
+            Text(
+              text,
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(
+                    color: AppPalette.muted,
+                    height: 1.45,
+                  ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1135,7 +1188,10 @@ class _ClosingInvitation extends StatelessWidget {
               const SizedBox(height: 12),
               Text(
                 'Thành phố sạch hơn bắt đầu từ một lần chạm.',
-                style: Theme.of(context).textTheme.headlineSmall,
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w900,
+                      color: AppPalette.night,
+                    ),
               ),
               const SizedBox(height: 6),
               Text(
@@ -1146,10 +1202,33 @@ class _ClosingInvitation extends StatelessWidget {
               ),
             ],
           );
-          final button = FilledButton.icon(
-            onPressed: onCreateAccount,
-            icon: const Icon(Icons.arrow_forward_rounded),
-            label: const Text('Tạo tài khoản'),
+          final button = AnimatedTap(
+            onTap: onCreateAccount,
+            child: Container(
+              height: 54,
+              padding: const EdgeInsets.symmetric(horizontal: 22),
+              decoration: BoxDecoration(
+                color: AppPalette.primaryDark,
+                borderRadius: BorderRadius.circular(AppRadii.md),
+                boxShadow: AppStyles.glowShadows,
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.arrow_forward_rounded, color: Colors.white),
+                  SizedBox(width: 8),
+                  Text(
+                    'Tạo tài khoản',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 14.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           );
           if (compact) {
             return Column(

@@ -287,14 +287,10 @@ class _CitizenDashboardHeader extends StatelessWidget {
           width: 48,
           height: 48,
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [AppPalette.lime, AppPalette.jade],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
+            gradient: AppStyles.primaryGradient,
             borderRadius: BorderRadius.circular(17),
           ),
-          child: const Icon(Icons.waving_hand_rounded, color: AppPalette.night),
+          child: const Icon(Icons.waving_hand_rounded, color: Colors.white, size: 22),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -305,7 +301,11 @@ class _CitizenDashboardHeader extends StatelessWidget {
                 'Chào $name,',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.titleLarge,
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w900,
+                      color: AppPalette.night,
+                      letterSpacing: -0.4,
+                    ),
               ),
               const SizedBox(height: 2),
               Text(
@@ -321,23 +321,24 @@ class _CitizenDashboardHeader extends StatelessWidget {
         ),
         if (MediaQuery.sizeOf(context).width >= 520)
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             decoration: BoxDecoration(
-              color: AppPalette.mint,
+              gradient: AppStyles.primaryGradient,
               borderRadius: BorderRadius.circular(AppRadii.pill),
+              boxShadow: AppStyles.glowShadows,
             ),
             child: Row(
               children: [
                 const Icon(
                   Icons.eco_rounded,
                   size: 18,
-                  color: AppPalette.primary,
+                  color: Colors.white,
                 ),
                 const SizedBox(width: 6),
                 Text(
                   '$points điểm',
                   style: const TextStyle(
-                    color: AppPalette.primaryDark,
+                    color: Colors.white,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
@@ -381,17 +382,17 @@ class _CitizenHero extends StatelessWidget {
         return Container(
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [AppPalette.night, Color(0xFF0A5146)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
+            gradient: AppStyles.darkGradient,
             borderRadius: BorderRadius.circular(AppRadii.xl),
-            boxShadow: const [
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.12),
+              width: 1.2,
+            ),
+            boxShadow: [
               BoxShadow(
-                color: Color(0x26082F2B),
-                blurRadius: 28,
-                offset: Offset(0, 14),
+                color: AppPalette.night.withValues(alpha: 0.14),
+                blurRadius: 32,
+                offset: const Offset(0, 16),
               ),
             ],
           ),
@@ -403,7 +404,7 @@ class _CitizenHero extends StatelessWidget {
                 child: Icon(
                   Icons.recycling_rounded,
                   size: wide ? 250 : 190,
-                  color: Colors.white.withValues(alpha: 0.06),
+                  color: Colors.white.withValues(alpha: 0.05),
                 ),
               ),
               Padding(
@@ -471,39 +472,80 @@ class _CitizenHero extends StatelessWidget {
         Text(
           'Báo rác trong vài chạm.\nTheo dõi thật rõ ràng.',
           style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-            color: Colors.white,
-            height: 1.08,
-          ),
+                color: Colors.white,
+                height: 1.08,
+                fontWeight: FontWeight.w900,
+                letterSpacing: -0.8,
+              ),
         ),
         const SizedBox(height: 10),
         Text(
           'Bạn đang có $points điểm xanh từ những đóng góp cho cộng đồng.',
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-            color: Colors.white.withValues(alpha: 0.72),
-          ),
+                color: Colors.white.withValues(alpha: 0.72),
+                letterSpacing: -0.1,
+              ),
         ),
       ],
     );
   }
 
   Widget _heroActions(BuildContext context, {required bool horizontal}) {
-    final primary = FilledButton.icon(
-      onPressed: onCreateReport,
-      style: FilledButton.styleFrom(
-        backgroundColor: AppPalette.lime,
-        foregroundColor: AppPalette.night,
+    final primary = AnimatedTap(
+      onTap: onCreateReport,
+      child: Container(
+        height: 52,
+        padding: const EdgeInsets.symmetric(horizontal: 22),
+        decoration: BoxDecoration(
+          gradient: AppStyles.limeGradient,
+          borderRadius: BorderRadius.circular(AppRadii.md),
+          boxShadow: AppStyles.limeGlowShadows,
+        ),
+        child: const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.camera_alt_rounded, color: AppPalette.night, size: 20),
+            SizedBox(width: 8),
+            Text(
+              'Báo rác ngay',
+              style: TextStyle(
+                color: AppPalette.night,
+                fontWeight: FontWeight.w900,
+                fontSize: 14.5,
+              ),
+            ),
+          ],
+        ),
       ),
-      icon: const Icon(Icons.camera_alt_rounded),
-      label: const Text('Báo rác ngay'),
     );
-    final secondary = OutlinedButton.icon(
-      onPressed: onOpenReports,
-      style: OutlinedButton.styleFrom(
-        foregroundColor: Colors.white,
-        side: BorderSide(color: Colors.white.withValues(alpha: 0.28)),
+    final secondary = AnimatedTap(
+      onTap: onOpenReports,
+      child: Container(
+        height: 52,
+        padding: const EdgeInsets.symmetric(horizontal: 22),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(AppRadii.md),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.28),
+            width: 1.2,
+          ),
+        ),
+        child: const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.receipt_long_rounded, color: Colors.white, size: 20),
+            SizedBox(width: 8),
+            Text(
+              'Yêu cầu của tôi',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w900,
+                fontSize: 14.5,
+              ),
+            ),
+          ],
+        ),
       ),
-      icon: const Icon(Icons.receipt_long_rounded),
-      label: const Text('Yêu cầu của tôi'),
     );
     if (horizontal) {
       return Column(
@@ -559,7 +601,7 @@ class _CitizenMetricGrid extends StatelessWidget {
         label: 'Địa chỉ đã lưu',
         value: '$addressCount',
         icon: Icons.home_work_rounded,
-        color: AppPalette.coral,
+        color: AppPalette.violet,
       ),
     ];
     return LayoutBuilder(
@@ -582,9 +624,9 @@ class _CitizenMetricGrid extends StatelessWidget {
           crossAxisCount: columns,
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          mainAxisSpacing: 10,
-          crossAxisSpacing: 10,
-          childAspectRatio: columns == 4 ? 1.65 : 1.42,
+          mainAxisSpacing: 12,
+          crossAxisSpacing: 12,
+          childAspectRatio: columns == 4 ? 1.62 : 1.48,
           children: [for (final item in items) _CitizenMetricCard(item: item)],
         );
       },
@@ -599,47 +641,57 @@ class _CitizenMetricCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        color: AppPalette.surface,
-        borderRadius: BorderRadius.circular(AppRadii.lg),
-        border: Border.all(color: AppPalette.line.withValues(alpha: 0.72)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: item.color.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(15),
+    return AnimatedTap(
+      onTap: () {},
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppPalette.surface,
+          borderRadius: BorderRadius.circular(AppRadii.lg),
+          border: Border.all(color: AppPalette.line.withValues(alpha: 0.55), width: 1.1),
+          boxShadow: AppStyles.cardShadows,
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: item.color.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(item.icon, color: item.color, size: 22),
             ),
-            child: Icon(item.icon, color: item.color, size: 21),
-          ),
-          const SizedBox(width: 11),
-          Expanded(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  item.value,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
-                ),
-                Text(
-                  item.label,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.labelSmall?.copyWith(color: AppPalette.muted),
-                ),
-              ],
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    item.value,
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w900,
+                          color: AppPalette.night,
+                          fontSize: 20,
+                        ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    item.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: AppPalette.muted,
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -679,10 +731,10 @@ class _CitizenAttentionSection extends StatelessWidget {
               child: Center(child: CircularProgressIndicator()),
             )
           : error != null
-          ? _CitizenInlineError(message: error!, onRetry: onRetry)
-          : report == null
-          ? _CitizenNoActiveReport(onCreateReport: onCreateReport)
-          : _CitizenActiveReport(report: report!, onOpenReports: onOpenReports),
+              ? _CitizenInlineError(message: error!, onRetry: onRetry)
+              : report == null
+                  ? _CitizenNoActiveReport(onCreateReport: onCreateReport)
+                  : _CitizenActiveReport(report: report!, onOpenReports: onOpenReports),
     );
   }
 }
@@ -736,12 +788,15 @@ class _CitizenActiveReport extends StatelessWidget {
       report.addressNumber,
       report.addressDetail,
     );
+    final statusColorVal = statusColor(report.status);
+
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: AppPalette.mint.withValues(alpha: 0.62),
+        color: AppPalette.surface,
         borderRadius: BorderRadius.circular(AppRadii.lg),
-        border: Border.all(color: AppPalette.primary.withValues(alpha: 0.12)),
+        border: Border.all(color: AppPalette.line.withValues(alpha: 0.55), width: 1.1),
+        boxShadow: AppStyles.cardShadows,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -752,16 +807,16 @@ class _CitizenActiveReport extends StatelessWidget {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: AppPalette.night,
+                  color: statusColorVal.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(15),
                 ),
                 child: Icon(
                   statusIcon(report.status),
-                  color: AppPalette.lime,
+                  color: statusColorVal,
                   size: 22,
                 ),
               ),
-              const SizedBox(width: 11),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -770,15 +825,20 @@ class _CitizenActiveReport extends StatelessWidget {
                       '#${report.id} · ${report.categoryName}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleMedium,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w900,
+                            color: AppPalette.night,
+                          ),
                     ),
+                    const SizedBox(height: 2),
                     Text(
                       address.isEmpty ? 'Chưa có địa chỉ' : address,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: Theme.of(
-                        context,
-                      ).textTheme.bodySmall?.copyWith(color: AppPalette.muted),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: AppPalette.muted,
+                            fontWeight: FontWeight.w600,
+                          ),
                     ),
                   ],
                 ),
@@ -787,30 +847,58 @@ class _CitizenActiveReport extends StatelessWidget {
               StatusChip(report.status),
             ],
           ),
-          const SizedBox(height: 15),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(AppRadii.pill),
-            child: LinearProgressIndicator(
-              value: _progress,
-              minHeight: 8,
-              backgroundColor: AppPalette.surface,
-            ),
+          const SizedBox(height: 20),
+          // Slepper visual track
+          Column(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(AppRadii.pill),
+                child: LinearProgressIndicator(
+                  value: _progress,
+                  minHeight: 8,
+                  backgroundColor: AppPalette.canvas,
+                  color: statusColorVal,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 14),
           Text(
             _message,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: AppPalette.muted,
-              fontWeight: FontWeight.w600,
-            ),
+                  color: AppPalette.muted,
+                  fontWeight: FontWeight.w600,
+                  height: 1.4,
+                ),
           ),
-          const SizedBox(height: 13),
+          const SizedBox(height: 20),
           Align(
             alignment: Alignment.centerRight,
-            child: FilledButton.tonalIcon(
-              onPressed: onOpenReports,
-              icon: const Icon(Icons.arrow_forward_rounded, size: 18),
-              label: const Text('Mở danh sách yêu cầu'),
+            child: AnimatedTap(
+              onTap: onOpenReports,
+              child: Container(
+                height: 44,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                decoration: BoxDecoration(
+                  color: AppPalette.mintStrong,
+                  borderRadius: BorderRadius.circular(AppRadii.md),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Mở danh sách yêu cầu',
+                      style: TextStyle(
+                        color: AppPalette.primaryDark,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Icon(Icons.arrow_forward_rounded, color: AppPalette.primaryDark, size: 16),
+                  ],
+                ),
+              ),
             ),
           ),
         ],
@@ -827,26 +915,39 @@ class _CitizenNoActiveReport extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(17),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: AppPalette.surfaceMuted,
+        color: AppPalette.surface,
         borderRadius: BorderRadius.circular(AppRadii.lg),
+        border: Border.all(color: AppPalette.line.withValues(alpha: 0.55), width: 1.1),
+        boxShadow: AppStyles.cardShadows,
       ),
       child: Row(
         children: [
-          const Icon(
-            Icons.check_circle_rounded,
-            color: AppPalette.primary,
-            size: 38,
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: AppPalette.primary.withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.check_circle_rounded,
+              color: AppPalette.primary,
+              size: 28,
+            ),
           ),
-          const SizedBox(width: 13),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   'Không có yêu cầu đang chờ',
-                  style: Theme.of(context).textTheme.titleMedium,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w900,
+                        color: AppPalette.night,
+                      ),
                 ),
                 const SizedBox(height: 3),
                 Text(
@@ -858,10 +959,19 @@ class _CitizenNoActiveReport extends StatelessWidget {
               ],
             ),
           ),
-          IconButton.filledTonal(
-            tooltip: 'Tạo yêu cầu',
-            onPressed: onCreateReport,
-            icon: const Icon(Icons.add_rounded),
+          const SizedBox(width: 8),
+          AnimatedTap(
+            onTap: onCreateReport,
+            child: Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: AppPalette.primary,
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: AppStyles.glowShadows,
+              ),
+              child: const Icon(Icons.add_rounded, color: Colors.white),
+            ),
           ),
         ],
       ),
@@ -963,48 +1073,67 @@ class _CitizenQuickAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: action.color.withValues(alpha: 0.09),
-      borderRadius: BorderRadius.circular(AppRadii.lg),
-      child: InkWell(
-        onTap: action.onTap,
-        borderRadius: BorderRadius.circular(AppRadii.lg),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: action.color.withValues(alpha: 0.14),
-                      borderRadius: BorderRadius.circular(13),
-                    ),
-                    child: Icon(action.icon, color: action.color, size: 20),
-                  ),
-                  const Spacer(),
-                  Icon(
-                    Icons.arrow_outward_rounded,
-                    size: 17,
-                    color: action.color,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Text(action.title, style: Theme.of(context).textTheme.titleSmall),
-              const SizedBox(height: 2),
-              Text(
-                action.subtitle,
-                style: Theme.of(
-                  context,
-                ).textTheme.labelSmall?.copyWith(color: AppPalette.muted),
-              ),
-            ],
+    return AnimatedTap(
+      onTap: action.onTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: action.color.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(AppRadii.lg),
+          border: Border.all(
+            color: action.color.withValues(alpha: 0.12),
+            width: 1.1,
           ),
+          boxShadow: [
+            BoxShadow(
+              color: action.color.withValues(alpha: 0.02),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: action.color.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(13),
+                  ),
+                  child: Icon(action.icon, color: action.color, size: 20),
+                ),
+                const Spacer(),
+                Icon(
+                  Icons.arrow_outward_rounded,
+                  size: 17,
+                  color: action.color,
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Text(
+              action.title,
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w900,
+                    color: AppPalette.night,
+                  ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              action.subtitle,
+              style: Theme.of(
+                context,
+              ).textTheme.labelSmall?.copyWith(
+                    color: AppPalette.muted,
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
+          ],
         ),
       ),
     );
