@@ -483,12 +483,7 @@ class _AddressManagementViewState extends State<AddressManagementView> {
                                 },
                               ),
                               children: [
-                                TileLayer(
-                                  urlTemplate:
-                                      'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                                  userAgentPackageName:
-                                      'com.example.waste_recycling_flutter',
-                                ),
+                                appMapTileLayer(),
                                 MarkerLayer(
                                   markers: const [
                                     Marker(
@@ -509,6 +504,7 @@ class _AddressManagementViewState extends State<AddressManagementView> {
                                     ),
                                   ],
                                 ),
+                                appMapAttribution(),
                               ],
                             ),
                             IgnorePointer(

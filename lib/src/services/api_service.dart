@@ -1,11 +1,20 @@
+import 'dart:math';
+import 'dart:typed_data';
+
 import '../core/api_client.dart';
 import '../core/json_helpers.dart';
+import '../features/collector/data/collector_api.dart';
+import '../features/enterprise/data/enterprise_api.dart';
 import '../models/models.dart';
 
 class ApiService {
-  ApiService(this.client);
+  ApiService(this.client)
+    : collector = CollectorApi(client),
+      enterprise = EnterpriseApi(client);
 
   final ApiClient client;
+  final CollectorApi collector;
+  final EnterpriseApi enterprise;
 
   Future<User> login(String email, String password) async {
     final data = await client.post('/auth/login', {
@@ -73,6 +82,23 @@ class ApiService {
   Future<List<WasteCategory>> getCategories() async =>
       parseList(await client.get('/category/list'), WasteCategory.fromJson);
 
+  Future<WasteClassification> classifyWasteImage(
+    Uint8List bytes, {
+    required String filename,
+    String locale = 'vi-VN',
+  }) async {
+    final data = await client
+        .postImage(
+          '/report/classifications',
+          bytes: bytes,
+          filename: filename,
+          fields: {'locale': locale},
+          headers: {'Idempotency-Key': _uuidV4()},
+        )
+        .timeout(const Duration(seconds: 20));
+    return WasteClassification.fromJson(Map<String, dynamic>.from(data));
+  }
+
   Future<WasteReport> createReport(JsonMap data) async => WasteReport.fromJson(
     Map<String, dynamic>.from(await client.post('/report/create', data)),
   );
@@ -127,87 +153,49 @@ class ApiService {
     );
   }
 
-  Future<Enterprise> getEnterprise() async => Enterprise.fromJson(
-    Map<String, dynamic>.from(await client.get('/enterprise/profile')),
-  );
+  Future<Enterprise> getEnterprise() => enterprise.getProfile();
 
-  Future<Enterprise> registerEnterprise(JsonMap data) async =>
-      Enterprise.fromJson(
-        Map<String, dynamic>.from(
-          await client.post('/enterprise/register', data),
-        ),
-      );
+  Future<Enterprise> registerEnterprise(JsonMap data) =>
+      enterprise.register(data);
 
-  Future<Enterprise> updateEnterprise(JsonMap data) async =>
-      Enterprise.fromJson(
-        Map<String, dynamic>.from(
-          await client.put('/enterprise/profile', data),
-        ),
-      );
+  Future<Enterprise> updateEnterprise(JsonMap data) =>
+      enterprise.updateProfile(data);
 
-  Future<List<WasteReport>> getPendingReports() async => parseList(
-    await client.get('/enterprise/reports/pending'),
-    WasteReport.fromJson,
-  );
+  Future<List<WasteReport>> getPendingReports() =>
+      enterprise.getPendingReports();
 
-  Future<WasteReport> acceptReport(int reportId, int ruleId) async {
-    return WasteReport.fromJson(
-      Map<String, dynamic>.from(
-        await client.post(
-          '/enterprise/reports/$reportId/accept?ruleId=$ruleId',
-        ),
-      ),
-    );
-  }
+  Future<WasteReport> acceptReport(int reportId, int ruleId) =>
+      enterprise.acceptReport(reportId, ruleId);
 
-  Future<void> rejectReport(int reportId) =>
-      client.post('/enterprise/reports/$reportId/reject');
+  Future<void> rejectReport(int reportId) => enterprise.releaseReport(reportId);
 
-  Future<List<WasteReport>> getAcceptedReports() async => parseList(
-    await client.get('/enterprise/reports/accepted'),
-    WasteReport.fromJson,
-  );
+  Future<List<WasteReport>> getAcceptedReports() =>
+      enterprise.getDispatchReports();
 
-  Future<WasteReport> assignCollector(int reportId, int collectorId) async {
-    return WasteReport.fromJson(
-      Map<String, dynamic>.from(
-        await client.post('/enterprise/reports/assign', {
-          'reportId': reportId,
-          'collectorId': collectorId,
-        }),
-      ),
-    );
-  }
+  Future<List<WasteReport>> getEnterpriseReportHistory() =>
+      enterprise.getReportHistory();
 
-  Future<List<Collector>> getCollectors() async =>
-      parseList(await client.get('/enterprise/collectors'), Collector.fromJson);
+  Future<WasteReport> assignCollector(int reportId, int collectorId) =>
+      enterprise.assignCollector(reportId, collectorId);
 
-  Future<Collector> createCollector(JsonMap data) async => Collector.fromJson(
-    Map<String, dynamic>.from(
-      await client.post('/enterprise/collectors', data),
-    ),
-  );
+  Future<List<Collector>> getCollectors() async => enterprise.getCollectors();
 
-  Future<void> deleteCollector(int id) =>
-      client.delete('/enterprise/collectors/$id');
+  Future<Collector> createCollector(JsonMap data) =>
+      enterprise.createCollector(data);
 
-  Future<List<PointRule>> getPointRules() async =>
-      parseList(await client.get('/points/rules/my-rules'), PointRule.fromJson);
+  Future<void> deleteCollector(int id) => enterprise.deleteCollector(id);
 
-  Future<PointRule> createPointRule(JsonMap data) async => PointRule.fromJson(
-    Map<String, dynamic>.from(await client.post('/points/rules', data)),
-  );
+  Future<List<PointRule>> getPointRules() async => enterprise.getPointRules();
 
-  Future<PointRule> updatePointRule(int id, JsonMap data) async =>
-      PointRule.fromJson(
-        Map<String, dynamic>.from(await client.put('/points/rules/$id', data)),
-      );
+  Future<PointRule> createPointRule(JsonMap data) =>
+      enterprise.createPointRule(data);
 
-  Future<PointRule> togglePointRule(int id) async => PointRule.fromJson(
-    Map<String, dynamic>.from(await client.put('/points/rules/$id/toggle')),
-  );
+  Future<PointRule> updatePointRule(int id, JsonMap data) =>
+      enterprise.updatePointRule(id, data);
 
-  Future<void> deletePointRule(int id) => client.delete('/points/rules/$id');
+  Future<PointRule> togglePointRule(int id) => enterprise.togglePointRule(id);
+
+  Future<void> deletePointRule(int id) => enterprise.deletePointRule(id);
 
   Future<List<WasteStatistics>> getWasteStatistics({
     int? categoryId,
@@ -216,47 +204,41 @@ class ApiService {
     String? startDate,
     String? endDate,
   }) async {
-    return parseList(
-      await client.get('/enterprise/statistics', {
-        'categoryId': categoryId?.toString(),
-        'provinceCode': provinceCode,
-        'wardCode': wardCode,
-        'startDate': startDate,
-        'endDate': endDate,
-      }),
-      WasteStatistics.fromJson,
+    return enterprise.getWasteStatistics(
+      categoryId: categoryId,
+      provinceCode: provinceCode,
+      wardCode: wardCode,
+      startDate: startDate,
+      endDate: endDate,
     );
   }
 
-  Future<Collector> getCollectorProfile() async => Collector.fromJson(
-    Map<String, dynamic>.from(await client.get('/collector/profile')),
-  );
+  Future<Collector> getCollectorProfile() => collector.getProfile();
 
   Future<List<WasteReport>> getAssignedReports() async =>
-      parseList(await client.get('/collector/reports'), WasteReport.fromJson);
+      collector.getAssignedReports();
 
-  Future<WasteReport> updateCollectionStatus(int reportId, JsonMap data) async {
-    return WasteReport.fromJson(
-      Map<String, dynamic>.from(
-        await client.put('/collector/reports/$reportId/status', data),
-      ),
-    );
-  }
+  Future<WasteReport> updateCollectionStatus(int reportId, JsonMap data) =>
+      collector.updateCollectionStatus(reportId, data);
 
-  Future<Collector> updateCollectorStatus(String status) async {
-    return Collector.fromJson(
-      Map<String, dynamic>.from(
-        await client.put('/collector/status', null, {'status': status}),
-      ),
-    );
-  }
+  Future<Collector> updateCollectorStatus(String status) =>
+      collector.updateAvailability(status);
 
-  Future<List<WorkHistory>> getWorkHistory() async => parseList(
-    await client.get('/collector/work-history'),
-    WorkHistory.fromJson,
-  );
+  Future<List<WorkHistory>> getWorkHistory() => collector.getWorkHistory();
 
-  Future<WorkStatistics> getWorkStatistics() async => WorkStatistics.fromJson(
-    Map<String, dynamic>.from(await client.get('/collector/work-statistics')),
-  );
+  Future<WorkStatistics> getWorkStatistics() => collector.getWorkStatistics();
+}
+
+String _uuidV4() {
+  final random = Random.secure();
+  final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  String hex(int value) => value.toRadixString(16).padLeft(2, '0');
+  final value = bytes.map(hex).join();
+  return '${value.substring(0, 8)}-'
+      '${value.substring(8, 12)}-'
+      '${value.substring(12, 16)}-'
+      '${value.substring(16, 20)}-'
+      '${value.substring(20)}';
 }

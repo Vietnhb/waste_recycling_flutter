@@ -7,6 +7,28 @@ import 'api_exception.dart';
 String friendlyError(Object e) {
   // --- ApiException có status code ---
   if (e is ApiException) {
+    switch (e.code) {
+      case 'INVALID_CREDENTIALS':
+        return 'Email hoặc mật khẩu không đúng.';
+      case 'EMAIL_EXISTS':
+        return 'Email này đã được sử dụng.';
+      case 'EMAIL_CHANGE_REQUIRES_VERIFICATION':
+        return 'Đổi email cần xác minh danh tính. Vui lòng liên hệ quản trị viên.';
+      case 'SELF_DELETE':
+        return 'Bạn không thể tự xóa tài khoản đang đăng nhập.';
+      case 'SELF_ROLE_CHANGE':
+        return 'Bạn không thể tự đổi vai trò của tài khoản đang đăng nhập.';
+      case 'ACCOUNT_HAS_HISTORY':
+        return 'Tài khoản đã phát sinh dữ liệu và cần được lưu lại để đối soát.';
+      case 'ROLE_BOUND_TO_COLLECTOR':
+        return 'Vai trò đang gắn với hồ sơ nhân viên thu gom.';
+      case 'ROLE_BOUND_TO_ENTERPRISE':
+        return 'Vai trò đang gắn với hồ sơ doanh nghiệp.';
+      case 'ROLE_BOUND_TO_REPORTS':
+        return 'Vai trò đang gắn với lịch sử báo cáo.';
+      case 'COMPLAINT_EXISTS':
+        return 'Báo cáo này đã có một phản hồi được gửi trước đó.';
+    }
     final code = e.statusCode;
     if (code != null) {
       switch (code) {

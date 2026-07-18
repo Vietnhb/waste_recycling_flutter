@@ -45,7 +45,13 @@ class _AdminUsersViewState extends State<AdminUsersView> {
   Future<void> _createOrEdit([User? user]) async {
     final result = await showDialog<JsonMap>(
       context: context,
-      builder: (context) => UserDialog(user: user),
+      builder: (context) => UserDialog(
+        user: user,
+        canChangeEmail: user == null || user.id != widget.controller.user?.id,
+        canChangeRole:
+            user == null ||
+            (user.role != 'COLLECTOR' && user.id != widget.controller.user?.id),
+      ),
     );
     if (result == null) return;
     try {
@@ -62,7 +68,10 @@ class _AdminUsersViewState extends State<AdminUsersView> {
   }
 
   Future<void> _delete(User user) async {
-    final ok = await confirmDialog(context, 'Xóa tài khoản ${user.email}?');
+    final ok = await confirmDialog(
+      context,
+      'Xóa vĩnh viễn tài khoản ${user.email}? Chỉ tài khoản chưa phát sinh dữ liệu nghiệp vụ mới có thể xóa.',
+    );
     if (!ok) return;
     try {
       await widget.controller.api.deleteUser(user.id);
@@ -437,8 +446,8 @@ class _AdminUsersViewState extends State<AdminUsersView> {
                 _delete(user);
               }
             },
-            itemBuilder: (context) => const [
-              PopupMenuItem(
+            itemBuilder: (context) => [
+              const PopupMenuItem(
                 value: 'edit',
                 child: ListTile(
                   contentPadding: EdgeInsets.zero,
@@ -446,20 +455,21 @@ class _AdminUsersViewState extends State<AdminUsersView> {
                   title: Text('Chỉnh sửa'),
                 ),
               ),
-              PopupMenuItem(
-                value: 'delete',
-                child: ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(
-                    Icons.delete_outline_rounded,
-                    color: AppPalette.danger,
-                  ),
-                  title: Text(
-                    'Xóa tài khoản',
-                    style: TextStyle(color: AppPalette.danger),
+              if (user.id != widget.controller.user?.id)
+                const PopupMenuItem(
+                  value: 'delete',
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(
+                      Icons.delete_outline_rounded,
+                      color: AppPalette.danger,
+                    ),
+                    title: Text(
+                      'Xóa tài khoản',
+                      style: TextStyle(color: AppPalette.danger),
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
         ],

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../controllers/app_controller.dart';
+import '../../core/error_helpers.dart';
 import '../admin/admin_screens.dart';
 import '../auth/auth_screens.dart';
 import '../citizen/citizen_screens.dart';
@@ -42,15 +43,17 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _workspaceForRole(String role) {
-    switch (role) {
+    switch (role.trim().toUpperCase()) {
       case 'ADMIN':
         return AdminScreen(controller: widget.controller);
       case 'ENTERPRISE':
         return EnterpriseScreen(controller: widget.controller);
       case 'COLLECTOR':
         return CollectorScreen(controller: widget.controller);
-      default:
+      case 'CITIZEN':
         return CitizenScreen(controller: widget.controller);
+      default:
+        return _UnsupportedRoleWorkspace(controller: widget.controller);
     }
   }
 
@@ -159,6 +162,10 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final user = widget.controller.user;
     if (user != null) return _workspaceForRole(user.role);
+    if (widget.controller.token != null &&
+        widget.controller.sessionRestoreError != null) {
+      return _SessionRestoreFailure(controller: widget.controller);
+    }
 
     return Scaffold(
       backgroundColor: AppPalette.cream,
@@ -211,6 +218,122 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             );
           },
+        ),
+      ),
+    );
+  }
+}
+
+class _SessionRestoreFailure extends StatelessWidget {
+  const _SessionRestoreFailure({required this.controller});
+
+  final AppController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppPalette.cream,
+      body: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: AppSurface(
+                padding: const EdgeInsets.all(28),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.cloud_off_rounded,
+                      size: 52,
+                      color: AppPalette.amber,
+                    ),
+                    const SizedBox(height: 18),
+                    Text(
+                      'Chưa thể xác minh phiên đăng nhập',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.headlineSmall,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      friendlyError(controller.sessionRestoreError!),
+                      textAlign: TextAlign.center,
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodyMedium?.copyWith(color: AppPalette.muted),
+                    ),
+                    const SizedBox(height: 22),
+                    FilledButton.icon(
+                      onPressed: controller.retrySessionRestore,
+                      icon: const Icon(Icons.refresh_rounded),
+                      label: const Text('Thử kết nối lại'),
+                    ),
+                    const SizedBox(height: 8),
+                    TextButton(
+                      onPressed: controller.logout,
+                      child: const Text('Đăng xuất tài khoản này'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _UnsupportedRoleWorkspace extends StatelessWidget {
+  const _UnsupportedRoleWorkspace({required this.controller});
+
+  final AppController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: AppSurface(
+                padding: const EdgeInsets.all(28),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.admin_panel_settings_outlined,
+                      size: 52,
+                      color: AppPalette.amber,
+                    ),
+                    const SizedBox(height: 18),
+                    Text(
+                      'Chưa thể mở không gian làm việc',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.headlineSmall,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Vai trò của tài khoản chưa được hệ thống nhận diện. Hãy đăng nhập lại hoặc liên hệ quản trị viên.',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodyMedium?.copyWith(color: AppPalette.muted),
+                    ),
+                    const SizedBox(height: 22),
+                    FilledButton.icon(
+                      onPressed: () async => controller.logout(),
+                      icon: const Icon(Icons.logout_rounded),
+                      label: const Text('Đăng xuất an toàn'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );

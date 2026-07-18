@@ -100,6 +100,194 @@ class WasteCategory {
   }
 }
 
+class WasteClassification {
+  const WasteClassification({
+    required this.requestId,
+    required this.category,
+    this.categoryId,
+    required this.confidence,
+    required this.alternatives,
+    required this.detectedItems,
+    required this.safetyFlags,
+    required this.guidance,
+    required this.requiresConfirmation,
+    required this.fallbackUsed,
+    required this.model,
+    required this.modelVersion,
+    required this.taxonomyVersion,
+    required this.processingMs,
+  });
+
+  final String requestId;
+  final String category;
+  final int? categoryId;
+  final double confidence;
+  final List<WasteClassificationAlternative> alternatives;
+  final List<WasteDetectedItem> detectedItems;
+  final List<WasteSafetyFlag> safetyFlags;
+  final WasteDisposalGuidance guidance;
+  final bool requiresConfirmation;
+  final bool fallbackUsed;
+  final String model;
+  final String modelVersion;
+  final String taxonomyVersion;
+  final int processingMs;
+
+  bool get hasHighRisk => safetyFlags.any(
+    (flag) => flag.severity == 'HIGH' || flag.severity == 'CRITICAL',
+  );
+
+  factory WasteClassification.fromJson(JsonMap json) {
+    final rawCategoryId = json['categoryId'];
+    return WasteClassification(
+      requestId: asString(json['requestId'] ?? json['analysisId']),
+      category: asString(json['category'], 'UNKNOWN').toUpperCase(),
+      categoryId: rawCategoryId == null ? null : asInt(rawCategoryId),
+      confidence: asDouble(json['confidence']).clamp(0, 1),
+      alternatives: parseList(
+        json['alternatives'],
+        WasteClassificationAlternative.fromJson,
+      ),
+      detectedItems: _parseDetectedItems(json['detectedItems']),
+      safetyFlags: _parseSafetyFlags(json['safetyFlags']),
+      guidance: WasteDisposalGuidance.fromJson(
+        json['disposalGuidance'] is Map
+            ? Map<String, dynamic>.from(json['disposalGuidance'] as Map)
+            : const <String, dynamic>{},
+      ),
+      requiresConfirmation: asBool(json['requiresConfirmation'], true),
+      fallbackUsed: asBool(json['fallbackUsed']),
+      model: asString(json['model'], 'waste-vision'),
+      modelVersion: asString(json['modelVersion']),
+      taxonomyVersion: asString(json['taxonomyVersion'], 'v1'),
+      processingMs: asInt(json['processingMs']),
+    );
+  }
+
+  static List<WasteDetectedItem> _parseDetectedItems(dynamic value) {
+    if (value is! List) return const [];
+    return value
+        .map((item) {
+          if (item is Map) {
+            return WasteDetectedItem.fromJson(Map<String, dynamic>.from(item));
+          }
+          return WasteDetectedItem(
+            code: '',
+            label: asString(item),
+            confidence: 0,
+          );
+        })
+        .where((item) => item.label.trim().isNotEmpty)
+        .toList();
+  }
+
+  static List<WasteSafetyFlag> _parseSafetyFlags(dynamic value) {
+    if (value is! List) return const [];
+    return value
+        .map((item) {
+          if (item is Map) {
+            return WasteSafetyFlag.fromJson(Map<String, dynamic>.from(item));
+          }
+          return WasteSafetyFlag(
+            code: 'UNKNOWN_RISK',
+            severity: 'MEDIUM',
+            message: asString(item),
+          );
+        })
+        .where((item) => item.message.trim().isNotEmpty)
+        .toList();
+  }
+}
+
+class WasteClassificationAlternative {
+  const WasteClassificationAlternative({
+    required this.category,
+    this.categoryId,
+    required this.confidence,
+  });
+
+  final String category;
+  final int? categoryId;
+  final double confidence;
+
+  factory WasteClassificationAlternative.fromJson(JsonMap json) {
+    return WasteClassificationAlternative(
+      category: asString(json['category'], 'UNKNOWN').toUpperCase(),
+      categoryId: json['categoryId'] == null ? null : asInt(json['categoryId']),
+      confidence: asDouble(json['confidence']).clamp(0, 1),
+    );
+  }
+}
+
+class WasteDetectedItem {
+  const WasteDetectedItem({
+    required this.code,
+    required this.label,
+    required this.confidence,
+  });
+
+  final String code;
+  final String label;
+  final double confidence;
+
+  factory WasteDetectedItem.fromJson(JsonMap json) {
+    return WasteDetectedItem(
+      code: asString(json['code']).toUpperCase(),
+      label: asString(json['label'] ?? json['name']),
+      confidence: asDouble(json['confidence']).clamp(0, 1),
+    );
+  }
+}
+
+class WasteSafetyFlag {
+  const WasteSafetyFlag({
+    required this.code,
+    required this.severity,
+    required this.message,
+  });
+
+  final String code;
+  final String severity;
+  final String message;
+
+  factory WasteSafetyFlag.fromJson(JsonMap json) {
+    return WasteSafetyFlag(
+      code: asString(json['code'], 'UNKNOWN_RISK').toUpperCase(),
+      severity: asString(json['severity'], 'MEDIUM').toUpperCase(),
+      message: asString(json['message']),
+    );
+  }
+}
+
+class WasteDisposalGuidance {
+  const WasteDisposalGuidance({
+    required this.headline,
+    required this.steps,
+    required this.destination,
+    required this.pickupEligible,
+  });
+
+  final String headline;
+  final List<String> steps;
+  final String destination;
+  final bool pickupEligible;
+
+  factory WasteDisposalGuidance.fromJson(JsonMap json) {
+    final rawSteps = json['steps'];
+    return WasteDisposalGuidance(
+      headline: asString(json['headline']),
+      steps: rawSteps is List
+          ? rawSteps
+                .map(asString)
+                .where((step) => step.trim().isNotEmpty)
+                .toList()
+          : const [],
+      destination: asString(json['destination']),
+      pickupEligible: asBool(json['pickupEligible'], true),
+    );
+  }
+}
+
 class WasteReport {
   const WasteReport({
     required this.id,
@@ -122,10 +310,15 @@ class WasteReport {
     required this.phoneNumber,
     required this.categoryId,
     required this.categoryName,
+    this.estimatedWeight,
     this.weight,
     this.isCorrectlyClassified,
     this.collectedImageUrl,
+    this.collectedAt,
     this.priorityScore,
+    this.enterpriseId,
+    this.collectorId,
+    this.collectorName,
   });
 
   final int id;
@@ -148,10 +341,15 @@ class WasteReport {
   final String phoneNumber;
   final int categoryId;
   final String categoryName;
+  final double? estimatedWeight;
   final double? weight;
   final bool? isCorrectlyClassified;
   final String? collectedImageUrl;
+  final DateTime? collectedAt;
   final int? priorityScore;
+  final int? enterpriseId;
+  final int? collectorId;
+  final String? collectorName;
 
   factory WasteReport.fromJson(JsonMap json) {
     return WasteReport(
@@ -175,12 +373,25 @@ class WasteReport {
       phoneNumber: asString(json['phoneNumber']),
       categoryId: asInt(json['categoryId']),
       categoryName: asString(json['categoryName']),
+      estimatedWeight: json['estimatedWeight'] == null
+          ? null
+          : asDouble(json['estimatedWeight']),
       weight: json['weight'] == null ? null : asDouble(json['weight']),
       isCorrectlyClassified: json['isCorrectlyClassified'] == null
           ? null
           : asBool(json['isCorrectlyClassified']),
       collectedImageUrl: json['collectedImageUrl']?.toString(),
-      priorityScore: json['priorityScore'] == null ? null : asInt(json['priorityScore']),
+      collectedAt: asDate(json['collectedAt']),
+      priorityScore: json['priorityScore'] == null
+          ? null
+          : asInt(json['priorityScore']),
+      enterpriseId: json['enterpriseId'] == null
+          ? null
+          : asInt(json['enterpriseId']),
+      collectorId: json['collectorId'] == null
+          ? null
+          : asInt(json['collectorId']),
+      collectorName: json['collectorName']?.toString(),
     );
   }
 }
@@ -226,6 +437,7 @@ class Collector {
     required this.enterpriseId,
     required this.enterpriseName,
     required this.currentStatus,
+    this.isActive = true,
   });
 
   final int id;
@@ -235,6 +447,7 @@ class Collector {
   final int enterpriseId;
   final String enterpriseName;
   final String currentStatus;
+  final bool isActive;
 
   factory Collector.fromJson(JsonMap json) {
     return Collector(
@@ -245,6 +458,7 @@ class Collector {
       enterpriseId: asInt(json['enterpriseId']),
       enterpriseName: asString(json['enterpriseName']),
       currentStatus: asString(json['currentStatus']),
+      isActive: asBool(json['isActive'] ?? json['active'], true),
     );
   }
 }
@@ -263,6 +477,7 @@ class PointRule {
     this.correctClassificationBonus,
     required this.isActive,
     this.createdAt,
+    this.inUse = false,
   });
 
   final int id;
@@ -277,6 +492,7 @@ class PointRule {
   final int? correctClassificationBonus;
   final bool isActive;
   final DateTime? createdAt;
+  final bool inUse;
 
   factory PointRule.fromJson(JsonMap json) {
     return PointRule(
@@ -296,6 +512,7 @@ class PointRule {
           : asInt(json['correctClassificationBonus']),
       isActive: asBool(json['isActive'] ?? json['active'], true),
       createdAt: asDate(json['createdAt']),
+      inUse: asBool(json['inUse']),
     );
   }
 }

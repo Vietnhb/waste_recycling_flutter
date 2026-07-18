@@ -9,6 +9,7 @@ import '../profile/profile_screen.dart';
 import '../shared/widgets.dart';
 
 part 'complaints_view.dart';
+part 'admin_home_view.dart';
 part 'users_view.dart';
 
 class AdminScreen extends StatefulWidget {
@@ -22,8 +23,16 @@ class AdminScreen extends StatefulWidget {
 
 class _AdminScreenState extends State<AdminScreen> {
   int _selectedIndex = 0;
+  final _homeKey = GlobalKey<_AdminHomeViewState>();
 
   static const _destinations = [
+    (
+      icon: Icons.home_outlined,
+      selectedIcon: Icons.home_rounded,
+      label: 'Trang chủ',
+      title: 'Tổng quan vận hành',
+      subtitle: 'Nắm nhanh sức khỏe hệ thống và các việc cần ưu tiên',
+    ),
     (
       icon: Icons.manage_accounts_outlined,
       selectedIcon: Icons.manage_accounts_rounded,
@@ -41,9 +50,28 @@ class _AdminScreenState extends State<AdminScreen> {
   ];
 
   late final List<Widget> _pages = [
+    AdminHomeView(
+      key: _homeKey,
+      controller: widget.controller,
+      onNavigate: _selectDestination,
+    ),
     AdminUsersView(controller: widget.controller),
     AdminComplaintsView(controller: widget.controller),
   ];
+
+  void _selectDestination(int index) {
+    if (_selectedIndex == index) {
+      if (index == 0) _homeKey.currentState?.refresh();
+      return;
+    }
+    setState(() => _selectedIndex = index);
+    if (index == 0) _homeKey.currentState?.refresh();
+  }
+
+  void _handlePopInvoked(bool didPop, Object? result) {
+    if (didPop || _selectedIndex == 0) return;
+    setState(() => _selectedIndex = 0);
+  }
 
   Future<void> _openProfile() async {
     await Navigator.of(context).push(
@@ -61,80 +89,84 @@ class _AdminScreenState extends State<AdminScreen> {
     final extendRail = width >= 1220;
     final destination = _destinations[_selectedIndex];
 
-    return Scaffold(
-      body: SafeArea(
-        bottom: false,
-        child: Row(
-          children: [
-            if (showRail)
-              _AdminNavigationRail(
-                selectedIndex: _selectedIndex,
-                extended: extendRail,
-                user: widget.controller.user,
-                onSelected: (index) => setState(() => _selectedIndex = index),
-                onProfile: _openProfile,
-                onLogout: () => logoutToHome(context, widget.controller.logout),
-              ),
-            Expanded(
-              child: Column(
-                children: [
-                  _AdminTopBar(
-                    icon: destination.selectedIcon,
-                    title: destination.title,
-                    subtitle: destination.subtitle,
-                    user: widget.controller.user,
-                    onProfile: _openProfile,
-                    onLogout: () =>
-                        logoutToHome(context, widget.controller.logout),
-                  ),
-                  const Divider(),
-                  Expanded(
-                    child: AppLazyIndexedStack(
-                      index: _selectedIndex,
-                      children: _pages,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-      bottomNavigationBar: showRail
-          ? null
-          : SafeArea(
-              top: false,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: AppPalette.surface,
-                  border: Border(
-                    top: BorderSide(
-                      color: AppPalette.line.withValues(alpha: 0.8),
-                    ),
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppPalette.night.withValues(alpha: 0.08),
-                      blurRadius: 24,
-                      offset: const Offset(0, -8),
-                    ),
-                  ],
-                ),
-                child: NavigationBar(
+    return PopScope<Object?>(
+      canPop: _selectedIndex == 0,
+      onPopInvokedWithResult: _handlePopInvoked,
+      child: Scaffold(
+        body: SafeArea(
+          bottom: false,
+          child: Row(
+            children: [
+              if (showRail)
+                _AdminNavigationRail(
                   selectedIndex: _selectedIndex,
-                  onDestinationSelected: (index) =>
-                      setState(() => _selectedIndex = index),
-                  destinations: [
-                    for (final item in _destinations)
-                      NavigationDestination(
-                        icon: Icon(item.icon),
-                        selectedIcon: Icon(item.selectedIcon),
-                        label: item.label,
+                  extended: extendRail,
+                  user: widget.controller.user,
+                  onSelected: _selectDestination,
+                  onProfile: _openProfile,
+                  onLogout: () =>
+                      logoutToHome(context, widget.controller.logout),
+                ),
+              Expanded(
+                child: Column(
+                  children: [
+                    _AdminTopBar(
+                      icon: destination.selectedIcon,
+                      title: destination.title,
+                      subtitle: destination.subtitle,
+                      user: widget.controller.user,
+                      onProfile: _openProfile,
+                      onLogout: () =>
+                          logoutToHome(context, widget.controller.logout),
+                    ),
+                    const Divider(),
+                    Expanded(
+                      child: AppLazyIndexedStack(
+                        index: _selectedIndex,
+                        children: _pages,
                       ),
+                    ),
                   ],
                 ),
               ),
-            ),
+            ],
+          ),
+        ),
+        bottomNavigationBar: showRail
+            ? null
+            : SafeArea(
+                top: false,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: AppPalette.surface,
+                    border: Border(
+                      top: BorderSide(
+                        color: AppPalette.line.withValues(alpha: 0.8),
+                      ),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppPalette.night.withValues(alpha: 0.08),
+                        blurRadius: 24,
+                        offset: const Offset(0, -8),
+                      ),
+                    ],
+                  ),
+                  child: NavigationBar(
+                    selectedIndex: _selectedIndex,
+                    onDestinationSelected: _selectDestination,
+                    destinations: [
+                      for (final item in _destinations)
+                        NavigationDestination(
+                          icon: Icon(item.icon),
+                          selectedIcon: Icon(item.selectedIcon),
+                          label: item.label,
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+      ),
     );
   }
 }
@@ -434,15 +466,23 @@ class _AdminAccountButton extends StatelessWidget {
 }
 
 class UserDialog extends StatefulWidget {
-  const UserDialog({super.key, this.user});
+  const UserDialog({
+    super.key,
+    this.user,
+    this.canChangeEmail = true,
+    this.canChangeRole = true,
+  });
 
   final User? user;
+  final bool canChangeEmail;
+  final bool canChangeRole;
 
   @override
   State<UserDialog> createState() => _UserDialogState();
 }
 
 class _UserDialogState extends State<UserDialog> {
+  final _formKey = GlobalKey<FormState>();
   late final TextEditingController _emailCtrl;
   late final TextEditingController _nameCtrl;
   late final TextEditingController _passwordCtrl;
@@ -466,13 +506,14 @@ class _UserDialogState extends State<UserDialog> {
   }
 
   void _submit() {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
     final data = <String, dynamic>{
       'email': _emailCtrl.text.trim(),
       'fullName': _nameCtrl.text.trim(),
       'role': _role,
     };
     if (widget.user == null) {
-      data['password'] = _passwordCtrl.text.trim();
+      data['password'] = _passwordCtrl.text;
     }
     Navigator.pop(context, data);
   }
@@ -482,42 +523,82 @@ class _UserDialogState extends State<UserDialog> {
     return AlertDialog(
       title: Text(widget.user == null ? 'Tạo tài khoản' : 'Cập nhật tài khoản'),
       content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: _emailCtrl,
-              decoration: inputDecoration('Email'),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _nameCtrl,
-              decoration: inputDecoration('Họ tên'),
-            ),
-            if (widget.user == null) ...[
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: _emailCtrl,
+                readOnly: !widget.canChangeEmail,
+                keyboardType: TextInputType.emailAddress,
+                autofillHints: const [AutofillHints.email],
+                decoration: inputDecoration(
+                  'Email',
+                  helperText: widget.canChangeEmail
+                      ? null
+                      : 'Không thể đổi email của phiên đang đăng nhập',
+                ),
+                validator: (value) {
+                  final email = value?.trim() ?? '';
+                  if (!RegExp(
+                    r'^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$',
+                  ).hasMatch(email)) {
+                    return 'Nhập một địa chỉ email hợp lệ';
+                  }
+                  return null;
+                },
+              ),
               const SizedBox(height: 8),
-              TextField(
-                controller: _passwordCtrl,
-                obscureText: true,
-                decoration: inputDecoration('Mật khẩu'),
+              TextFormField(
+                controller: _nameCtrl,
+                textCapitalization: TextCapitalization.words,
+                autofillHints: const [AutofillHints.name],
+                decoration: inputDecoration('Họ tên'),
+                validator: (value) {
+                  final name = value?.trim() ?? '';
+                  if (name.length < 2 || name.length > 100) {
+                    return 'Họ tên cần từ 2 đến 100 ký tự';
+                  }
+                  return null;
+                },
+              ),
+              if (widget.user == null) ...[
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _passwordCtrl,
+                  obscureText: true,
+                  enableSuggestions: false,
+                  autocorrect: false,
+                  autofillHints: const [AutofillHints.newPassword],
+                  decoration: inputDecoration('Mật khẩu'),
+                  validator: (value) {
+                    final length = value?.length ?? 0;
+                    if (length < 8 || length > 72) {
+                      return 'Mật khẩu cần từ 8 đến 72 ký tự';
+                    }
+                    return null;
+                  },
+                ),
+              ],
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                initialValue: _role,
+                decoration: inputDecoration(
+                  'Vai trò',
+                  helperText: widget.canChangeRole
+                      ? null
+                      : _role == 'COLLECTOR'
+                      ? 'Nhân viên thu gom được quản lý trong đội ngũ doanh nghiệp'
+                      : 'Không thể tự thay đổi vai trò đang đăng nhập',
+                ),
+                items: _roleItems(),
+                onChanged: widget.canChangeRole
+                    ? (value) => setState(() => _role = value ?? _role)
+                    : null,
               ),
             ],
-            const SizedBox(height: 8),
-            DropdownButtonFormField<String>(
-              initialValue: _role,
-              decoration: inputDecoration('Role'),
-              items: const [
-                DropdownMenuItem(value: 'CITIZEN', child: Text('CITIZEN')),
-                DropdownMenuItem(
-                  value: 'ENTERPRISE',
-                  child: Text('ENTERPRISE'),
-                ),
-                DropdownMenuItem(value: 'COLLECTOR', child: Text('COLLECTOR')),
-                DropdownMenuItem(value: 'ADMIN', child: Text('ADMIN')),
-              ],
-              onChanged: (value) => setState(() => _role = value ?? _role),
-            ),
-          ],
+          ),
         ),
       ),
       actions: [
@@ -528,6 +609,26 @@ class _UserDialogState extends State<UserDialog> {
         FilledButton(onPressed: _submit, child: const Text('Lưu')),
       ],
     );
+  }
+
+  List<DropdownMenuItem<String>> _roleItems() {
+    const labels = <String, String>{
+      'CITIZEN': 'Người dân',
+      'ENTERPRISE': 'Doanh nghiệp',
+      'ADMIN': 'Quản trị viên',
+      'COLLECTOR': 'Nhân viên thu gom',
+    };
+    final roles = widget.user == null
+        ? const ['CITIZEN', 'ENTERPRISE', 'ADMIN']
+        : widget.canChangeRole
+        ? const ['CITIZEN', 'ENTERPRISE', 'ADMIN']
+        : [_role];
+    return roles
+        .map(
+          (role) =>
+              DropdownMenuItem(value: role, child: Text(labels[role] ?? role)),
+        )
+        .toList();
   }
 }
 
@@ -551,8 +652,8 @@ class _ResolveComplaintDialogState extends State<ResolveComplaintDialog> {
   }
 
   void _submit() {
-    if (_noteCtrl.text.trim().isEmpty) {
-      showSnack(context, 'Vui lòng nhập ghi chú admin');
+    if (_noteCtrl.text.trim().length < 3) {
+      showSnack(context, 'Ghi chú xử lý cần ít nhất 3 ký tự');
       return;
     }
     Navigator.pop(context, (status: _status, note: _noteCtrl.text.trim()));
@@ -571,10 +672,16 @@ class _ResolveComplaintDialogState extends State<ResolveComplaintDialog> {
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
               initialValue: _status,
-              decoration: inputDecoration('Trạng thái'),
+              decoration: inputDecoration('Kết quả xử lý'),
               items: const [
-                DropdownMenuItem(value: 'RESOLVED', child: Text('RESOLVED')),
-                DropdownMenuItem(value: 'REJECTED', child: Text('REJECTED')),
+                DropdownMenuItem(
+                  value: 'RESOLVED',
+                  child: Text('Đã giải quyết'),
+                ),
+                DropdownMenuItem(
+                  value: 'REJECTED',
+                  child: Text('Không chấp nhận'),
+                ),
               ],
               onChanged: (value) => setState(() => _status = value ?? _status),
             ),
@@ -583,7 +690,9 @@ class _ResolveComplaintDialogState extends State<ResolveComplaintDialog> {
               controller: _noteCtrl,
               minLines: 3,
               maxLines: 5,
-              decoration: inputDecoration('Ghi chú admin'),
+              maxLength: 2000,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: inputDecoration('Phản hồi đến người dân'),
             ),
           ],
         ),

@@ -1,16 +1,21 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:flutter/semantics.dart';
 
 import '../../controllers/app_controller.dart';
 import '../../core/json_helpers.dart';
+import '../../core/map_config.dart';
 import '../../models/models.dart';
 import '../../services/area_directory.dart';
 import '../../services/image_upload_service.dart';
@@ -33,9 +38,14 @@ class CitizenScreen extends StatefulWidget {
 }
 
 class _CitizenScreenState extends State<CitizenScreen> {
+  static const _railBreakpoint = 900.0;
+  static const _extendedRailBreakpoint = 1220.0;
+
   int _selectedIndex = 0;
   int _addressRevision = 0;
   int _reportRevision = 0;
+  final _reportComposerKey = GlobalKey<_ReportWasteViewState>();
+  final _rankingKey = GlobalKey<_RankingViewState>();
 
   List<Widget> get _pages => [
     CitizenHomeView(
@@ -43,6 +53,7 @@ class _CitizenScreenState extends State<CitizenScreen> {
       controller: widget.controller,
       onCreateReport: () => _selectPage(2),
       onOpenReports: () => _selectPage(1),
+      onOpenRanking: () => _selectPage(3),
       onOpenAddresses: () => _selectPage(4),
     ),
     MyReportsView(
@@ -50,65 +61,277 @@ class _CitizenScreenState extends State<CitizenScreen> {
       controller: widget.controller,
     ),
     ReportWasteView(
-      key: ValueKey('citizen-create-$_addressRevision'),
+      key: _reportComposerKey,
       controller: widget.controller,
       onAddAddress: () => _selectPage(4),
       onCreated: _handleReportCreated,
       onSubmitted: () => _selectPage(1),
     ),
-    RankingView(controller: widget.controller),
+    RankingView(
+      key: _rankingKey,
+      controller: widget.controller,
+      onCreateReport: () => _selectPage(2),
+    ),
     AddressManagementView(
       controller: widget.controller,
       onChanged: _handleAddressChanged,
     ),
   ];
 
-  void _selectPage(int index) => setState(() => _selectedIndex = index);
+  void _selectPage(int index) {
+    final previousIndex = _selectedIndex;
+    setState(() => _selectedIndex = index);
+    if (index == 3 && previousIndex != 3) {
+      final ranking = _rankingKey.currentState;
+      if (ranking != null) unawaited(ranking._refresh());
+    }
+  }
 
   void _handleAddressChanged() {
     setState(() => _addressRevision++);
+    final composer = _reportComposerKey.currentState;
+    if (composer != null) unawaited(composer._load(silent: true));
   }
 
   void _handleReportCreated() {
     setState(() => _reportRevision++);
   }
 
+  void _handlePopInvoked(bool didPop, Object? result) {
+    if (didPop || _selectedIndex == 0) return;
+    _selectPage(0);
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: AppLazyIndexedStack(index: _selectedIndex, children: _pages),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      floatingActionButton: Semantics(
-        button: true,
-        selected: _selectedIndex == 2,
-        label: 'Tạo báo cáo rác mới',
-        child: SizedBox(
-          width: 68,
-          height: 68,
-          child: FloatingActionButton(
-            heroTag: 'citizen-report-action',
-            tooltip: 'Báo rác',
-            elevation: 8,
-            highlightElevation: 3,
-            backgroundColor: _selectedIndex == 2
-                ? AppPalette.coral
-                : AppPalette.night,
-            foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(24),
-              side: BorderSide(
-                color: AppPalette.surface.withValues(alpha: 0.9),
-                width: 4,
+    final width = MediaQuery.sizeOf(context).width;
+    final showRail = width >= _railBreakpoint;
+    final extendRail = width >= _extendedRailBreakpoint;
+    final pages = AppLazyIndexedStack(index: _selectedIndex, children: _pages);
+
+    return PopScope<Object?>(
+      canPop: _selectedIndex == 0,
+      onPopInvokedWithResult: _handlePopInvoked,
+      child: Scaffold(
+        body: showRail
+            ? SafeArea(
+                bottom: false,
+                child: Row(
+                  children: [
+                    _CitizenNavigationRail(
+                      selectedIndex: _selectedIndex,
+                      extended: extendRail,
+                      onSelected: _selectPage,
+                    ),
+                    Expanded(child: pages),
+                  ],
+                ),
+              )
+            : pages,
+        floatingActionButtonLocation: showRail
+            ? null
+            : FloatingActionButtonLocation.centerDocked,
+        floatingActionButton: showRail
+            ? null
+            : Semantics(
+                button: true,
+                selected: _selectedIndex == 2,
+                label: 'Tạo báo cáo rác mới',
+                child: SizedBox(
+                  width: 68,
+                  height: 68,
+                  child: FloatingActionButton(
+                    heroTag: 'citizen-report-action',
+                    tooltip: 'Báo rác',
+                    elevation: 8,
+                    highlightElevation: 3,
+                    backgroundColor: _selectedIndex == 2
+                        ? AppPalette.coral
+                        : AppPalette.night,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(24),
+                      side: BorderSide(
+                        color: AppPalette.surface.withValues(alpha: 0.9),
+                        width: 4,
+                      ),
+                    ),
+                    onPressed: () => _selectPage(2),
+                    child: const Icon(Icons.camera_alt_rounded, size: 28),
+                  ),
+                ),
               ),
-            ),
-            onPressed: () => _selectPage(2),
-            child: const Icon(Icons.camera_alt_rounded, size: 28),
-          ),
+        bottomNavigationBar: showRail
+            ? null
+            : _CitizenBottomBar(
+                selectedIndex: _selectedIndex,
+                onSelected: _selectPage,
+              ),
+      ),
+    );
+  }
+}
+
+class _CitizenNavigationRail extends StatelessWidget {
+  const _CitizenNavigationRail({
+    required this.selectedIndex,
+    required this.extended,
+    required this.onSelected,
+  });
+
+  final int selectedIndex;
+  final bool extended;
+  final ValueChanged<int> onSelected;
+
+  static const _destinations = [
+    (
+      label: 'Trang chủ',
+      icon: Icons.home_outlined,
+      selectedIcon: Icons.home_rounded,
+    ),
+    (
+      label: 'Báo cáo',
+      icon: Icons.receipt_long_outlined,
+      selectedIcon: Icons.receipt_long_rounded,
+    ),
+    (
+      label: 'Báo rác',
+      icon: Icons.camera_alt_outlined,
+      selectedIcon: Icons.camera_alt_rounded,
+    ),
+    (
+      label: 'Xếp hạng',
+      icon: Icons.leaderboard_outlined,
+      selectedIcon: Icons.leaderboard_rounded,
+    ),
+    (
+      label: 'Địa chỉ',
+      icon: Icons.location_on_outlined,
+      selectedIcon: Icons.location_on_rounded,
+    ),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: extended ? 250 : 92,
+      decoration: BoxDecoration(
+        color: AppPalette.surface,
+        border: Border(
+          right: BorderSide(color: AppPalette.line.withValues(alpha: 0.8)),
         ),
       ),
-      bottomNavigationBar: _CitizenBottomBar(
-        selectedIndex: _selectedIndex,
-        onSelected: _selectPage,
+      child: Column(
+        children: [
+          Padding(
+            padding: EdgeInsets.fromLTRB(
+              extended ? 20 : 18,
+              18,
+              extended ? 20 : 18,
+              8,
+            ),
+            child: extended
+                ? const Align(
+                    alignment: Alignment.centerLeft,
+                    child: AppWordmark(compact: true),
+                  )
+                : const AppBrandMark(size: 48),
+          ),
+          if (extended)
+            Container(
+              margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: AppPalette.mint,
+                borderRadius: BorderRadius.circular(AppRadii.md),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.eco_rounded, color: AppPalette.primaryDark),
+                  SizedBox(width: 9),
+                  Expanded(
+                    child: Text(
+                      'Không gian công dân',
+                      style: TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          Expanded(
+            child: NavigationRail(
+              selectedIndex: selectedIndex,
+              extended: extended,
+              minWidth: 80,
+              minExtendedWidth: 250,
+              groupAlignment: -0.72,
+              labelType: extended
+                  ? NavigationRailLabelType.none
+                  : NavigationRailLabelType.selected,
+              onDestinationSelected: onSelected,
+              destinations: [
+                for (var index = 0; index < _destinations.length; index++)
+                  NavigationRailDestination(
+                    padding: const EdgeInsets.symmetric(vertical: 3),
+                    icon: index == 2
+                        ? _CitizenReportRailAction(
+                            selected: false,
+                            icon: _destinations[index].icon,
+                          )
+                        : Icon(_destinations[index].icon),
+                    selectedIcon: index == 2
+                        ? _CitizenReportRailAction(
+                            selected: true,
+                            icon: _destinations[index].selectedIcon,
+                          )
+                        : Icon(_destinations[index].selectedIcon),
+                    label: Text(_destinations[index].label),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CitizenReportRailAction extends StatelessWidget {
+  const _CitizenReportRailAction({required this.selected, required this.icon});
+
+  final bool selected;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: 'Tạo báo cáo rác mới',
+      button: true,
+      selected: selected,
+      child: AnimatedContainer(
+        key: const ValueKey('citizen-report-rail-action'),
+        duration: AppMotion.fast,
+        width: 52,
+        height: 48,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: selected
+                ? [AppPalette.coral, AppPalette.apricot]
+                : [AppPalette.night, AppPalette.nightSoft],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: [
+            BoxShadow(
+              color: (selected ? AppPalette.coral : AppPalette.night)
+                  .withValues(alpha: 0.2),
+              blurRadius: 16,
+              offset: const Offset(0, 7),
+            ),
+          ],
+        ),
+        child: Icon(icon, color: Colors.white, size: 24),
       ),
     );
   }
@@ -140,8 +363,8 @@ class _CitizenBottomBar extends StatelessWidget {
           children: [
             _CitizenNavItem(
               label: 'Trang chủ',
-              icon: Icons.map_outlined,
-              selectedIcon: Icons.map_rounded,
+              icon: Icons.home_outlined,
+              selectedIcon: Icons.home_rounded,
               selected: selectedIndex == 0,
               onTap: () => onSelected(0),
             ),
@@ -171,9 +394,9 @@ class _CitizenBottomBar extends StatelessWidget {
               ),
             ),
             _CitizenNavItem(
-              label: 'Điểm xanh',
-              icon: Icons.eco_outlined,
-              selectedIcon: Icons.eco_rounded,
+              label: 'Xếp hạng',
+              icon: Icons.leaderboard_outlined,
+              selectedIcon: Icons.leaderboard_rounded,
               selected: selectedIndex == 3,
               onTap: () => onSelected(3),
             ),

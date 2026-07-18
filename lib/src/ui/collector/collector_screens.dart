@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -12,13 +13,17 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../controllers/app_controller.dart';
 import '../../core/json_helpers.dart';
+import '../../core/map_config.dart';
+import '../../features/operations/domain/operation_workflow.dart';
 import '../../models/models.dart';
 import '../../services/image_upload_service.dart';
 import '../profile/profile_screen.dart';
 import '../shared/widgets.dart';
 
 part 'collector_history_view.dart';
+part 'collector_home_view.dart';
 part 'collector_reports_view.dart';
+part 'collector_workflow.dart';
 
 class CollectorScreen extends StatefulWidget {
   const CollectorScreen({super.key, required this.controller});
@@ -31,8 +36,18 @@ class CollectorScreen extends StatefulWidget {
 
 class _CollectorScreenState extends State<CollectorScreen> {
   int _selectedIndex = 0;
+  final _homeKey = GlobalKey<_CollectorHomeViewState>();
+  final _reportsKey = GlobalKey<_CollectorReportsViewState>();
+  final _historyKey = GlobalKey<_CollectorHistoryViewState>();
 
   static const _destinations = [
+    (
+      icon: Icons.home_outlined,
+      selectedIcon: Icons.home_rounded,
+      label: 'Trang chủ',
+      title: 'Tổng quan ca làm',
+      subtitle: 'Nắm nhanh công việc hôm nay và điểm đến ưu tiên tiếp theo',
+    ),
     (
       icon: Icons.route_outlined,
       selectedIcon: Icons.route_rounded,
@@ -50,9 +65,39 @@ class _CollectorScreenState extends State<CollectorScreen> {
   ];
 
   late final List<Widget> _pages = [
-    CollectorReportsView(controller: widget.controller),
-    CollectorHistoryView(controller: widget.controller),
+    CollectorHomeView(
+      key: _homeKey,
+      controller: widget.controller,
+      onOpenTrips: () => _selectDestination(1),
+      onOpenHistory: () => _selectDestination(2),
+    ),
+    CollectorReportsView(key: _reportsKey, controller: widget.controller),
+    CollectorHistoryView(key: _historyKey, controller: widget.controller),
   ];
+
+  void _selectDestination(int index) {
+    if (_selectedIndex == index) return;
+    setState(() => _selectedIndex = index);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      switch (index) {
+        case 0:
+          _homeKey.currentState?._load(showLoading: false, silent: true);
+          break;
+        case 1:
+          _reportsKey.currentState?._load(showLoading: false, silent: true);
+          break;
+        case 2:
+          _historyKey.currentState?._load(showLoading: false);
+          break;
+      }
+    });
+  }
+
+  void _handlePopInvoked(bool didPop, Object? result) {
+    if (didPop || _selectedIndex == 0) return;
+    _selectDestination(0);
+  }
 
   Future<void> _openProfile() async {
     await Navigator.of(context).push(
@@ -70,80 +115,84 @@ class _CollectorScreenState extends State<CollectorScreen> {
     final extendRail = width >= 1220;
     final destination = _destinations[_selectedIndex];
 
-    return Scaffold(
-      body: SafeArea(
-        bottom: false,
-        child: Row(
-          children: [
-            if (showRail)
-              _CollectorNavigationRail(
-                selectedIndex: _selectedIndex,
-                extended: extendRail,
-                user: widget.controller.user,
-                onSelected: (index) => setState(() => _selectedIndex = index),
-                onProfile: _openProfile,
-                onLogout: () => logoutToHome(context, widget.controller.logout),
-              ),
-            Expanded(
-              child: Column(
-                children: [
-                  _CollectorTopBar(
-                    icon: destination.selectedIcon,
-                    title: destination.title,
-                    subtitle: destination.subtitle,
-                    user: widget.controller.user,
-                    onProfile: _openProfile,
-                    onLogout: () =>
-                        logoutToHome(context, widget.controller.logout),
-                  ),
-                  const Divider(),
-                  Expanded(
-                    child: AppLazyIndexedStack(
-                      index: _selectedIndex,
-                      children: _pages,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-      bottomNavigationBar: showRail
-          ? null
-          : SafeArea(
-              top: false,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: AppPalette.surface,
-                  border: Border(
-                    top: BorderSide(
-                      color: AppPalette.line.withValues(alpha: 0.8),
-                    ),
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppPalette.night.withValues(alpha: 0.08),
-                      blurRadius: 24,
-                      offset: const Offset(0, -8),
-                    ),
-                  ],
-                ),
-                child: NavigationBar(
+    return PopScope<Object?>(
+      canPop: _selectedIndex == 0,
+      onPopInvokedWithResult: _handlePopInvoked,
+      child: Scaffold(
+        body: SafeArea(
+          bottom: false,
+          child: Row(
+            children: [
+              if (showRail)
+                _CollectorNavigationRail(
                   selectedIndex: _selectedIndex,
-                  onDestinationSelected: (index) =>
-                      setState(() => _selectedIndex = index),
-                  destinations: [
-                    for (final item in _destinations)
-                      NavigationDestination(
-                        icon: Icon(item.icon),
-                        selectedIcon: Icon(item.selectedIcon),
-                        label: item.label,
+                  extended: extendRail,
+                  user: widget.controller.user,
+                  onSelected: _selectDestination,
+                  onProfile: _openProfile,
+                  onLogout: () =>
+                      logoutToHome(context, widget.controller.logout),
+                ),
+              Expanded(
+                child: Column(
+                  children: [
+                    _CollectorTopBar(
+                      icon: destination.selectedIcon,
+                      title: destination.title,
+                      subtitle: destination.subtitle,
+                      user: widget.controller.user,
+                      onProfile: _openProfile,
+                      onLogout: () =>
+                          logoutToHome(context, widget.controller.logout),
+                    ),
+                    const Divider(),
+                    Expanded(
+                      child: AppLazyIndexedStack(
+                        index: _selectedIndex,
+                        children: _pages,
                       ),
+                    ),
                   ],
                 ),
               ),
-            ),
+            ],
+          ),
+        ),
+        bottomNavigationBar: showRail
+            ? null
+            : SafeArea(
+                top: false,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: AppPalette.surface,
+                    border: Border(
+                      top: BorderSide(
+                        color: AppPalette.line.withValues(alpha: 0.8),
+                      ),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppPalette.night.withValues(alpha: 0.08),
+                        blurRadius: 24,
+                        offset: const Offset(0, -8),
+                      ),
+                    ],
+                  ),
+                  child: NavigationBar(
+                    selectedIndex: _selectedIndex,
+                    onDestinationSelected: _selectDestination,
+                    destinations: [
+                      for (final item in _destinations)
+                        NavigationDestination(
+                          icon: Icon(item.icon),
+                          selectedIcon: Icon(item.selectedIcon),
+                          label: item.label,
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+      ),
     );
   }
 }
@@ -438,143 +487,6 @@ class _CollectorAccountButton extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-class CollectorStatusDialog extends StatefulWidget {
-  const CollectorStatusDialog({
-    super.key,
-    required this.report,
-    required this.controller,
-  });
-
-  final WasteReport report;
-  final AppController controller;
-
-  @override
-  State<CollectorStatusDialog> createState() => _CollectorStatusDialogState();
-}
-
-class _CollectorStatusDialogState extends State<CollectorStatusDialog> {
-  late String _status;
-  final _weightCtrl = TextEditingController();
-  XFile? _file;
-  bool _correct = true;
-  bool _saving = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _status = widget.report.status == 'ASSIGNED' ? 'ON_THE_WAY' : 'COLLECTED';
-    _weightCtrl.text = widget.report.weight?.toString() ?? '';
-  }
-
-  @override
-  void dispose() {
-    _weightCtrl.dispose();
-    super.dispose();
-  }
-
-  Future<void> _pick() async {
-    final file = await ImageUploadService.pickImage();
-    if (!mounted || file == null) return;
-    setState(() => _file = file);
-  }
-
-  Future<void> _save() async {
-    if (_status == 'COLLECTED' &&
-        (_file == null || asDouble(_weightCtrl.text) <= 0)) {
-      showSnack(context, 'Hoàn tất thu gom cần ảnh xác nhận và khối lượng > 0');
-      return;
-    }
-    setState(() => _saving = true);
-    try {
-      String? url;
-      if (_status == 'COLLECTED') {
-        url = await ImageUploadService.upload(_file!, 'collected-reports');
-      }
-      await widget.controller.api.updateCollectionStatus(widget.report.id, {
-        'status': _status,
-        'collectedImageUrl': url,
-        'weight': _status == 'COLLECTED' ? asDouble(_weightCtrl.text) : null,
-        'isCorrectlyClassified': _status == 'COLLECTED' ? _correct : null,
-      });
-      if (!mounted) return;
-      Navigator.pop(context, true);
-    } catch (e) {
-      if (!mounted) return;
-      showErrorSnack(context, e);
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text('Cập nhật chuyến #${widget.report.id}'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            DropdownButtonFormField<String>(
-              initialValue: _status,
-              decoration: inputDecoration('Trạng thái mới'),
-              items: [
-                if (widget.report.status == 'ASSIGNED')
-                  const DropdownMenuItem(
-                    value: 'ON_THE_WAY',
-                    child: Text('Bắt đầu đi lấy'),
-                  ),
-                const DropdownMenuItem(
-                  value: 'COLLECTED',
-                  child: Text('Hoàn tất thu gom'),
-                ),
-              ],
-              onChanged: (value) => setState(() => _status = value ?? _status),
-            ),
-            if (_status == 'COLLECTED') ...[
-              const SizedBox(height: 10),
-              TextField(
-                controller: _weightCtrl,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                decoration: inputDecoration('Khối lượng thực tế (kg)'),
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _pick,
-                      icon: const Icon(Icons.image),
-                      label: Text(_file == null ? 'Chọn ảnh' : _file!.name),
-                    ),
-                  ),
-                ],
-              ),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Người dân phân loại đúng'),
-                value: _correct,
-                onChanged: (value) => setState(() => _correct = value),
-              ),
-            ],
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: _saving ? null : () => Navigator.pop(context, false),
-          child: const Text('Hủy'),
-        ),
-        FilledButton(
-          onPressed: _saving ? null : _save,
-          child: Text(_saving ? 'Đang lưu...' : 'Xác nhận'),
-        ),
-      ],
     );
   }
 }

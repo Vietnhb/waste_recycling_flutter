@@ -1,5 +1,9 @@
 part of 'citizen_screens.dart';
 
+enum _WasteAnalysisPhase { idle, analyzing, suggested, failed }
+
+enum _CategorySelectionSource { none, manual, aiAccepted }
+
 class ReportWasteView extends StatefulWidget {
   const ReportWasteView({
     super.key,
@@ -27,9 +31,19 @@ class _ReportWasteViewState extends State<ReportWasteView> {
   List<WasteCategory> _categories = const [];
   List<WasteReport> _recentReports = const [];
   List<XFile> _files = const [];
+  Uint8List? _selectedBytes;
+  String? _selectedMimeType;
+  WasteClassification? _classification;
+  _WasteAnalysisPhase _analysisPhase = _WasteAnalysisPhase.idle;
+  _CategorySelectionSource _categorySource = _CategorySelectionSource.none;
+  String? _analysisError;
+  String? _imageError;
+  String? _loadError;
+  int _imageRevision = 0;
   int? _addressId;
   int? _categoryId;
   bool _loading = true;
+  bool _preparingImage = false;
   bool _submitting = false;
 
   @override
@@ -56,7 +70,12 @@ class _ReportWasteViewState extends State<ReportWasteView> {
   }
 
   Future<void> _load({bool silent = false}) async {
-    if (!silent) setState(() => _loading = true);
+    if (!silent) {
+      setState(() {
+        _loading = true;
+        _loadError = null;
+      });
+    }
     try {
       final results = await Future.wait([
         widget.controller.api.getAddresses(),
@@ -82,10 +101,15 @@ class _ReportWasteViewState extends State<ReportWasteView> {
         _categories = results[1] as List<WasteCategory>;
         _recentReports = results[2] as List<WasteReport>;
         _addressId = nextAddressId;
+        _loadError = null;
       });
     } catch (error) {
       if (!mounted) return;
-      showErrorSnack(context, error);
+      setState(() {
+        _loadError =
+            'Không thể tải dữ liệu tạo báo cáo. Kiểm tra kết nối rồi thử lại.';
+      });
+      if (silent) showErrorSnack(context, error);
     } finally {
       if (mounted && !silent) setState(() => _loading = false);
     }
@@ -98,7 +122,7 @@ class _ReportWasteViewState extends State<ReportWasteView> {
         imageQuality: 85,
       );
       if (!mounted || file == null) return;
-      setState(() => _files = [file]);
+      await _prepareImage(file);
     } catch (error) {
       if (!mounted) return;
       showErrorSnack(context, error);
@@ -109,55 +133,189 @@ class _ReportWasteViewState extends State<ReportWasteView> {
     try {
       final files = await ImageUploadService.pickImages(max: 1);
       if (!mounted || files.isEmpty) return;
-      setState(() => _files = [files.first]);
+      await _prepareImage(files.first);
     } catch (error) {
       if (!mounted) return;
       showErrorSnack(context, error);
     }
   }
 
-  void _suggestCategory() {
-    final text = _descCtrl.text.toLowerCase();
-    String kind = 'other';
-    if (text.contains('pin') ||
-        text.contains('hóa chất') ||
-        text.contains('hoa chat') ||
-        text.contains('bóng đèn')) {
-      kind = 'hazard';
-    } else if (text.contains('nhựa') ||
-        text.contains('chai') ||
-        text.contains('lon') ||
-        text.contains('giấy') ||
-        text.contains('carton')) {
-      kind = 'recycle';
-    } else if (text.contains('thức ăn') ||
-        text.contains('lá cây') ||
-        text.contains('hữu cơ') ||
-        text.contains('organic')) {
-      kind = 'organic';
+  Future<void> _prepareImage(XFile file) async {
+    if (_submitting) return;
+    setState(() {
+      _preparingImage = true;
+      _imageError = null;
+    });
+    try {
+      final bytes = await file.readAsBytes();
+      final mimeType = _detectImageMime(bytes);
+      if (bytes.lengthInBytes > 8 * 1024 * 1024) {
+        throw const FormatException('Ảnh vượt quá 8 MB. Hãy chọn ảnh nhẹ hơn.');
+      }
+      if (bytes.lengthInBytes < 512 || mimeType == null) {
+        throw const FormatException(
+          'Ảnh không hợp lệ. Chỉ hỗ trợ JPEG, PNG hoặc WEBP.',
+        );
+      }
+      if (!mounted) return;
+      _imageRevision++;
+      setState(() {
+        _files = [file];
+        _selectedBytes = bytes;
+        _selectedMimeType = mimeType;
+        _classification = null;
+        _analysisError = null;
+        _analysisPhase = _WasteAnalysisPhase.idle;
+        if (_categorySource == _CategorySelectionSource.aiAccepted) {
+          _categoryId = null;
+          _categorySource = _CategorySelectionSource.none;
+        }
+      });
+      await _analyzeImage();
+    } on FormatException catch (error) {
+      if (!mounted) return;
+      setState(() => _imageError = error.message);
+      showSnack(context, error.message);
+    } catch (_) {
+      if (!mounted) return;
+      const message = 'Không thể đọc ảnh này. Hãy chụp hoặc chọn ảnh khác.';
+      setState(() => _imageError = message);
+      showSnack(context, message);
+    } finally {
+      if (mounted) setState(() => _preparingImage = false);
     }
+  }
 
-    WasteCategory? match;
+  Future<void> _analyzeImage() async {
+    final bytes = _selectedBytes;
+    if (bytes == null || _files.isEmpty || _submitting) return;
+    final revision = _imageRevision;
+    setState(() {
+      _analysisPhase = _WasteAnalysisPhase.analyzing;
+      _analysisError = null;
+      _classification = null;
+    });
+    try {
+      final result = await widget.controller.api.classifyWasteImage(
+        bytes,
+        filename: _safeImageName(_files.first.name, _selectedMimeType),
+      );
+      if (!mounted || revision != _imageRevision) return;
+      setState(() {
+        _classification = result;
+        _analysisPhase = _WasteAnalysisPhase.suggested;
+      });
+    } on TimeoutException {
+      if (!mounted || revision != _imageRevision) return;
+      setState(() {
+        _analysisPhase = _WasteAnalysisPhase.failed;
+        _analysisError =
+            'Nhận diện ảnh phản hồi quá lâu. Bạn vẫn có thể chọn loại rác thủ công.';
+      });
+    } catch (_) {
+      if (!mounted || revision != _imageRevision) return;
+      setState(() {
+        _analysisPhase = _WasteAnalysisPhase.failed;
+        _analysisError =
+            'Nhận diện ảnh đang tạm gián đoạn. Chọn loại thủ công hoặc thử lại.';
+      });
+    }
+  }
+
+  void _removeImage() {
+    if (_submitting) return;
+    _imageRevision++;
+    setState(() {
+      _files = const [];
+      _selectedBytes = null;
+      _selectedMimeType = null;
+      _classification = null;
+      _analysisError = null;
+      _imageError = null;
+      _analysisPhase = _WasteAnalysisPhase.idle;
+      if (_categorySource == _CategorySelectionSource.aiAccepted) {
+        _categoryId = null;
+        _categorySource = _CategorySelectionSource.none;
+      }
+    });
+  }
+
+  WasteCategory? _classificationCategory([WasteClassification? value]) {
+    final result = value ?? _classification;
+    if (result == null) return null;
     for (final category in _categories) {
-      final name = category.name.toLowerCase();
-      if ((kind == 'hazard' &&
-              (name.contains('haz') || name.contains('nguy'))) ||
-          (kind == 'recycle' &&
-              (name.contains('recy') || name.contains('tái'))) ||
-          (kind == 'organic' &&
-              (name.contains('org') || name.contains('hữu'))) ||
-          (kind == 'other' &&
-              (name.contains('other') || name.contains('khác')))) {
-        match = category;
-        break;
+      if (result.categoryId != null && category.id == result.categoryId) {
+        return category;
+      }
+      if (category.name.toUpperCase() == result.category.toUpperCase()) {
+        return category;
       }
     }
-    if (match == null) {
-      showSnack(context, 'Chưa tìm được loại phù hợp trong danh mục hiện tại');
-      return;
+    return null;
+  }
+
+  void _acceptAiSuggestion() {
+    final category = _classificationCategory();
+    if (category == null || _submitting) return;
+    setState(() {
+      _categoryId = category.id;
+      _categorySource = _CategorySelectionSource.aiAccepted;
+    });
+  }
+
+  void _selectCategory(int categoryId) {
+    if (_submitting) return;
+    setState(() {
+      _categoryId = categoryId;
+      _categorySource = _CategorySelectionSource.manual;
+    });
+  }
+
+  String? _detectImageMime(Uint8List bytes) {
+    if (bytes.length >= 3 &&
+        bytes[0] == 0xff &&
+        bytes[1] == 0xd8 &&
+        bytes[2] == 0xff) {
+      return 'image/jpeg';
     }
-    setState(() => _categoryId = match!.id);
-    showSnack(context, 'Gợi ý nhanh: ${match.name}');
+    if (bytes.length >= 8 &&
+        bytes[0] == 0x89 &&
+        bytes[1] == 0x50 &&
+        bytes[2] == 0x4e &&
+        bytes[3] == 0x47 &&
+        bytes[4] == 0x0d &&
+        bytes[5] == 0x0a &&
+        bytes[6] == 0x1a &&
+        bytes[7] == 0x0a) {
+      return 'image/png';
+    }
+    if (bytes.length >= 12 &&
+        bytes[0] == 0x52 &&
+        bytes[1] == 0x49 &&
+        bytes[2] == 0x46 &&
+        bytes[3] == 0x46 &&
+        bytes[8] == 0x57 &&
+        bytes[9] == 0x45 &&
+        bytes[10] == 0x42 &&
+        bytes[11] == 0x50) {
+      return 'image/webp';
+    }
+    return null;
+  }
+
+  String _safeImageName(String name, String? mimeType) {
+    final trimmed = name.trim();
+    if (trimmed.isNotEmpty &&
+        !trimmed.contains('/') &&
+        !trimmed.contains('\\')) {
+      return trimmed;
+    }
+    final extension = switch (mimeType) {
+      'image/png' => 'png',
+      'image/webp' => 'webp',
+      _ => 'jpg',
+    };
+    return 'waste-photo.$extension';
   }
 
   Future<void> _submit() async {
@@ -173,25 +331,42 @@ class _ReportWasteViewState extends State<ReportWasteView> {
       return;
     }
 
+    final file = _files.first;
+    final description = _descCtrl.text.trim();
+    final addressId = _addressId!;
+    final categoryId = _categoryId!;
+    final estimatedWeight = asDouble(_weightCtrl.text);
     setState(() => _submitting = true);
     try {
-      final imageUrl = await ImageUploadService.upload(
-        _files.first,
-        'waste-reports',
-      );
+      final imageUrl = await ImageUploadService.upload(file, 'waste-reports');
       await widget.controller.api.createReport({
         'imageUrl': imageUrl,
-        'description': _descCtrl.text.trim(),
-        'userAddressId': _addressId,
-        'categoryId': _categoryId,
-        'estimatedWeight': asDouble(_weightCtrl.text),
+        'description': description,
+        'userAddressId': addressId,
+        'categoryId': categoryId,
+        'estimatedWeight': estimatedWeight,
+        if (_classification?.requestId.isNotEmpty ?? false)
+          'aiAnalysisId': _classification!.requestId,
+        'categorySelectionSource': switch (_categorySource) {
+          _CategorySelectionSource.aiAccepted => 'AI_ACCEPTED',
+          _CategorySelectionSource.manual when _classification != null =>
+            'AI_OVERRIDDEN',
+          _ => 'MANUAL',
+        },
       });
       if (!mounted) return;
       _descCtrl.clear();
       _weightCtrl.clear();
       setState(() {
         _files = const [];
+        _selectedBytes = null;
+        _selectedMimeType = null;
+        _classification = null;
+        _analysisError = null;
+        _analysisPhase = _WasteAnalysisPhase.idle;
         _categoryId = null;
+        _categorySource = _CategorySelectionSource.none;
+        _imageRevision++;
       });
       await _load(silent: true);
       if (!mounted) return;
@@ -273,7 +448,16 @@ class _ReportWasteViewState extends State<ReportWasteView> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const AppLoadingView(label: 'Đang mở studio phân loại rác…');
+    }
+    if (_loadError != null) {
+      return _buildBlocker(
+        title: 'Chưa kết nối được dữ liệu',
+        message: _loadError!,
+        buttonLabel: 'Thử tải lại',
+        buttonIcon: Icons.wifi_tethering_error_rounded,
+        onPressed: _load,
+      );
     }
     if (_addresses.isEmpty) {
       return _buildBlocker(
@@ -296,6 +480,8 @@ class _ReportWasteViewState extends State<ReportWasteView> {
       );
     }
 
+    final aiCategory = _classificationCategory();
+
     return Column(
       children: [
         Expanded(
@@ -311,17 +497,49 @@ class _ReportWasteViewState extends State<ReportWasteView> {
                 ),
                 const SizedBox(height: 18),
                 _ReportPhotoCard(
-                  file: _files.isEmpty ? null : _files.first,
+                  bytes: _selectedBytes,
+                  preparing: _preparingImage,
+                  analyzing: _analysisPhase == _WasteAnalysisPhase.analyzing,
+                  enabled: !_submitting,
+                  error: _imageError,
                   onCamera: _pickCamera,
                   onGallery: _pickGallery,
-                  onRemove: () => setState(() => _files = const []),
+                  onRemove: _removeImage,
+                ),
+                AnimatedSwitcher(
+                  duration: AppMotion.standard,
+                  switchInCurve: AppMotion.curve,
+                  child: _selectedBytes == null
+                      ? const SizedBox.shrink()
+                      : Padding(
+                          key: ValueKey(
+                            'ai-$_imageRevision-${_analysisPhase.name}',
+                          ),
+                          padding: const EdgeInsets.only(top: 14),
+                          child: _AiClassificationCard(
+                            phase: _analysisPhase,
+                            result: _classification,
+                            error: _analysisError,
+                            suggestionLabel: aiCategory == null
+                                ? null
+                                : _categoryLabel(aiCategory.name),
+                            accepted:
+                                _categorySource ==
+                                    _CategorySelectionSource.aiAccepted &&
+                                _categoryId == aiCategory?.id,
+                            enabled: !_submitting,
+                            onRetry: _analyzeImage,
+                            onAccept: _acceptAiSuggestion,
+                            categoryLabel: _categoryLabel,
+                          ),
+                        ),
                 ),
                 const SizedBox(height: 22),
                 _ComposerSection(
                   step: '02',
-                  title: 'Rác gì đang ở đây?',
+                  title: 'Xác nhận phân loại',
                   subtitle:
-                      'Chọn một loại để đội thu gom chuẩn bị đúng dụng cụ.',
+                      'Kết quả nhận diện chỉ là gợi ý. Bạn xác nhận loại cuối cùng trước khi gửi.',
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -341,8 +559,9 @@ class _ReportWasteViewState extends State<ReportWasteView> {
                                       : AppPalette.muted,
                                 ),
                                 label: Text(_categoryLabel(category.name)),
-                                onSelected: (_) =>
-                                    setState(() => _categoryId = category.id),
+                                onSelected: _submitting
+                                    ? null
+                                    : (_) => _selectCategory(category.id),
                               ),
                             )
                             .toList(),
@@ -350,6 +569,7 @@ class _ReportWasteViewState extends State<ReportWasteView> {
                       const SizedBox(height: 14),
                       TextField(
                         controller: _descCtrl,
+                        enabled: !_submitting,
                         minLines: 3,
                         maxLines: 5,
                         textCapitalization: TextCapitalization.sentences,
@@ -363,21 +583,10 @@ class _ReportWasteViewState extends State<ReportWasteView> {
                               alignLabelWithHint: true,
                             ),
                       ),
-                      const SizedBox(height: 10),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: TextButton.icon(
-                          onPressed: _suggestCategory,
-                          icon: const Icon(
-                            Icons.auto_awesome_rounded,
-                            size: 18,
-                          ),
-                          label: const Text('Gợi ý loại từ mô tả'),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 14),
                       TextField(
                         controller: _weightCtrl,
+                        enabled: !_submitting,
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                         ),
@@ -423,8 +632,9 @@ class _ReportWasteViewState extends State<ReportWasteView> {
                               ),
                             )
                             .toList(),
-                        onChanged: (value) =>
-                            setState(() => _addressId = value),
+                        onChanged: _submitting
+                            ? null
+                            : (value) => setState(() => _addressId = value),
                       ),
                       const SizedBox(height: 10),
                       Row(
@@ -443,7 +653,7 @@ class _ReportWasteViewState extends State<ReportWasteView> {
                             ),
                           ),
                           TextButton(
-                            onPressed: widget.onAddAddress,
+                            onPressed: _submitting ? null : widget.onAddAddress,
                             child: const Text('Quản lý'),
                           ),
                         ],
@@ -648,13 +858,21 @@ class _ReportComposerHero extends StatelessWidget {
 
 class _ReportPhotoCard extends StatelessWidget {
   const _ReportPhotoCard({
-    required this.file,
+    required this.bytes,
+    required this.preparing,
+    required this.analyzing,
+    required this.enabled,
+    required this.error,
     required this.onCamera,
     required this.onGallery,
     required this.onRemove,
   });
 
-  final XFile? file;
+  final Uint8List? bytes;
+  final bool preparing;
+  final bool analyzing;
+  final bool enabled;
+  final String? error;
   final VoidCallback onCamera;
   final VoidCallback onGallery;
   final VoidCallback onRemove;
@@ -674,71 +892,88 @@ class _ReportPhotoCard extends StatelessWidget {
           color: AppPalette.surface,
           borderRadius: BorderRadius.circular(AppRadii.xl),
           clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: file == null ? onCamera : null,
-            child: Container(
-              height: 230,
-              width: double.infinity,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(AppRadii.xl),
-                border: Border.all(
-                  color: file == null
-                      ? AppPalette.primary.withValues(alpha: 0.35)
-                      : Colors.transparent,
-                  width: 1.5,
+          child: Semantics(
+            button: bytes == null,
+            image: bytes != null,
+            label: bytes == null
+                ? 'Chụp ảnh để nhận diện loại vật liệu'
+                : 'Ảnh hiện trường đã chọn',
+            child: InkWell(
+              onTap: bytes == null && enabled && !preparing ? onCamera : null,
+              child: Container(
+                height: 230,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(AppRadii.xl),
+                  border: Border.all(
+                    color: bytes == null
+                        ? AppPalette.primary.withValues(alpha: 0.35)
+                        : Colors.transparent,
+                    width: 1.5,
+                  ),
                 ),
+                child: bytes == null
+                    ? _EmptyPhotoPrompt(preparing: preparing)
+                    : Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          _LocalWasteImage(bytes: bytes!),
+                          const DecoratedBox(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [Colors.transparent, Color(0xA6082F2B)],
+                                stops: [0.45, 1],
+                              ),
+                            ),
+                          ),
+                          if (analyzing) const _WasteScanOverlay(),
+                          Positioned(
+                            left: 14,
+                            bottom: 14,
+                            child: FilledButton.icon(
+                              style: FilledButton.styleFrom(
+                                minimumSize: const Size(0, 44),
+                                backgroundColor: AppPalette.surface,
+                                foregroundColor: AppPalette.night,
+                              ),
+                              onPressed: enabled ? onCamera : null,
+                              icon: const Icon(
+                                Icons.camera_alt_rounded,
+                                size: 18,
+                              ),
+                              label: const Text('Chụp lại'),
+                            ),
+                          ),
+                          Positioned(
+                            right: 12,
+                            top: 12,
+                            child: IconButton.filled(
+                              tooltip: 'Xóa ảnh',
+                              style: IconButton.styleFrom(
+                                backgroundColor: AppPalette.surface,
+                                foregroundColor: AppPalette.danger,
+                              ),
+                              onPressed: enabled ? onRemove : null,
+                              icon: const Icon(Icons.close_rounded),
+                            ),
+                          ),
+                        ],
+                      ),
               ),
-              child: file == null
-                  ? _EmptyPhotoPrompt(onCamera: onCamera)
-                  : Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        _LocalWasteImage(file: file!),
-                        const DecoratedBox(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [Colors.transparent, Color(0xA6082F2B)],
-                              stops: [0.45, 1],
-                            ),
-                          ),
-                        ),
-                        Positioned(
-                          left: 14,
-                          bottom: 14,
-                          child: FilledButton.icon(
-                            style: FilledButton.styleFrom(
-                              minimumSize: const Size(0, 44),
-                              backgroundColor: AppPalette.surface,
-                              foregroundColor: AppPalette.night,
-                            ),
-                            onPressed: onCamera,
-                            icon: const Icon(
-                              Icons.camera_alt_rounded,
-                              size: 18,
-                            ),
-                            label: const Text('Chụp lại'),
-                          ),
-                        ),
-                        Positioned(
-                          right: 12,
-                          top: 12,
-                          child: IconButton.filled(
-                            tooltip: 'Xóa ảnh',
-                            style: IconButton.styleFrom(
-                              backgroundColor: AppPalette.surface,
-                              foregroundColor: AppPalette.danger,
-                            ),
-                            onPressed: onRemove,
-                            icon: const Icon(Icons.close_rounded),
-                          ),
-                        ),
-                      ],
-                    ),
             ),
           ),
         ),
+        if (error != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            error!,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: AppPalette.danger),
+          ),
+        ],
         const SizedBox(height: 10),
         Row(
           children: [
@@ -757,7 +992,7 @@ class _ReportPhotoCard extends StatelessWidget {
               ),
             ),
             TextButton.icon(
-              onPressed: onGallery,
+              onPressed: enabled && !preparing ? onGallery : null,
               icon: const Icon(Icons.photo_library_outlined, size: 17),
               label: const Text('Thư viện'),
             ),
@@ -769,9 +1004,9 @@ class _ReportPhotoCard extends StatelessWidget {
 }
 
 class _EmptyPhotoPrompt extends StatelessWidget {
-  const _EmptyPhotoPrompt({required this.onCamera});
+  const _EmptyPhotoPrompt({required this.preparing});
 
-  final VoidCallback onCamera;
+  final bool preparing;
 
   @override
   Widget build(BuildContext context) {
@@ -786,28 +1021,19 @@ class _EmptyPhotoPrompt extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Container(
-            width: 76,
-            height: 76,
-            decoration: BoxDecoration(
-              color: AppPalette.night,
-              borderRadius: BorderRadius.circular(27),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x33082F2B),
-                  blurRadius: 20,
-                  offset: Offset(0, 9),
-                ),
-              ],
-            ),
-            child: const Icon(
-              Icons.camera_alt_rounded,
-              color: AppPalette.lime,
-              size: 34,
-            ),
-          ),
+          if (preparing)
+            const SizedBox(
+              width: 64,
+              height: 64,
+              child: CircularProgressIndicator(strokeWidth: 5),
+            )
+          else
+            const _ScanShutter(),
           const SizedBox(height: 17),
-          Text('Mở máy ảnh', style: Theme.of(context).textTheme.titleMedium),
+          Text(
+            preparing ? 'Đang kiểm tra ảnh...' : 'Quét rác bằng camera',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
           const SizedBox(height: 4),
           Text(
             'Đặt rác ở giữa khung hình và đủ sáng',
@@ -822,20 +1048,607 @@ class _EmptyPhotoPrompt extends StatelessWidget {
 }
 
 class _LocalWasteImage extends StatelessWidget {
-  const _LocalWasteImage({required this.file});
+  const _LocalWasteImage({required this.bytes});
 
-  final XFile file;
+  final Uint8List bytes;
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<Uint8List>(
-      future: file.readAsBytes(),
-      builder: (context, snapshot) {
-        if (snapshot.hasData) {
-          return Image.memory(snapshot.data!, fit: BoxFit.cover);
-        }
-        return const Center(child: CircularProgressIndicator());
-      },
+    return Image.memory(
+      bytes,
+      fit: BoxFit.cover,
+      errorBuilder: (_, _, _) => const ColoredBox(
+        color: AppPalette.surfaceMuted,
+        child: Center(
+          child: Icon(Icons.broken_image_outlined, color: AppPalette.danger),
+        ),
+      ),
+    );
+  }
+}
+
+class _ScanShutter extends StatelessWidget {
+  const _ScanShutter();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 86,
+      height: 86,
+      padding: const EdgeInsets.all(7),
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: AppPalette.surface,
+        border: Border.all(color: AppPalette.night, width: 3),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x33082F2B),
+            blurRadius: 20,
+            offset: Offset(0, 9),
+          ),
+        ],
+      ),
+      child: DecoratedBox(
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: LinearGradient(
+            colors: [AppPalette.lime, AppPalette.jade],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: const Icon(
+          Icons.center_focus_strong_rounded,
+          color: AppPalette.night,
+          size: 32,
+        ),
+      ),
+    );
+  }
+}
+
+class _WasteScanOverlay extends StatefulWidget {
+  const _WasteScanOverlay();
+
+  @override
+  State<_WasteScanOverlay> createState() => _WasteScanOverlayState();
+}
+
+class _WasteScanOverlayState extends State<_WasteScanOverlay>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1500),
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _controller
+        ..stop()
+        ..value = 0.5;
+    } else if (!_controller.isAnimating) {
+      _controller.repeat(reverse: true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: LayoutBuilder(
+        builder: (context, constraints) => Stack(
+          children: [
+            Positioned.fill(
+              child: Container(
+                margin: const EdgeInsets.all(22),
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: AppPalette.lime.withValues(alpha: 0.75),
+                    width: 2,
+                  ),
+                  borderRadius: BorderRadius.circular(24),
+                ),
+              ),
+            ),
+            AnimatedBuilder(
+              animation: _controller,
+              builder: (context, child) => Positioned(
+                left: 28,
+                right: 28,
+                top: 30 + (constraints.maxHeight - 60) * _controller.value,
+                child: child!,
+              ),
+              child: Container(
+                height: 3,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [
+                      Colors.transparent,
+                      AppPalette.lime,
+                      Colors.transparent,
+                    ],
+                  ),
+                  boxShadow: const [
+                    BoxShadow(color: AppPalette.lime, blurRadius: 10),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AiClassificationCard extends StatelessWidget {
+  const _AiClassificationCard({
+    required this.phase,
+    required this.result,
+    required this.error,
+    required this.suggestionLabel,
+    required this.accepted,
+    required this.enabled,
+    required this.onRetry,
+    required this.onAccept,
+    required this.categoryLabel,
+  });
+
+  final _WasteAnalysisPhase phase;
+  final WasteClassification? result;
+  final String? error;
+  final String? suggestionLabel;
+  final bool accepted;
+  final bool enabled;
+  final VoidCallback onRetry;
+  final VoidCallback onAccept;
+  final String Function(String) categoryLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    if (phase == _WasteAnalysisPhase.analyzing) {
+      return Semantics(
+        liveRegion: true,
+        label: 'Đang nhận diện vật liệu trong ảnh',
+        child: Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [AppPalette.night, AppPalette.nightSoft],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(AppRadii.lg),
+          ),
+          child: Row(
+            children: [
+              const _AiOrbitIcon(),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Green Vision đang quan sát',
+                      style: Theme.of(
+                        context,
+                      ).textTheme.titleMedium?.copyWith(color: Colors.white),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Nhận diện vật liệu, mức nguy hại và cách xử lý phù hợp…',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Colors.white.withValues(alpha: 0.7),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    const LinearProgressIndicator(
+                      minHeight: 5,
+                      color: AppPalette.lime,
+                      backgroundColor: Color(0x33FFFFFF),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (phase == _WasteAnalysisPhase.failed) {
+      return Semantics(
+        liveRegion: true,
+        label: error,
+        child: Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: AppPalette.cream,
+            borderRadius: BorderRadius.circular(AppRadii.lg),
+            border: Border.all(color: AppPalette.apricot),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(
+                Icons.cloud_off_rounded,
+                color: AppPalette.coral,
+                size: 28,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Không làm gián đoạn báo cáo',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      error ?? 'Nhận diện ảnh chưa sẵn sàng.',
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodySmall?.copyWith(color: AppPalette.muted),
+                    ),
+                    const SizedBox(height: 8),
+                    TextButton.icon(
+                      onPressed: enabled ? onRetry : null,
+                      icon: const Icon(Icons.refresh_rounded, size: 18),
+                      label: const Text('Phân tích lại'),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final value = result;
+    if (value == null) return const SizedBox.shrink();
+    final confidencePercent = (value.confidence * 100).round();
+    final isCautious = value.requiresConfirmation || value.confidence < 0.7;
+    final isHazard = value.hasHighRisk || value.category == 'HAZARDOUS';
+    final accent = isHazard
+        ? AppPalette.danger
+        : isCautious
+        ? AppPalette.amber
+        : AppPalette.jade;
+    final background = isHazard
+        ? const Color(0xFFFFEEEA)
+        : isCautious
+        ? AppPalette.cream
+        : AppPalette.mint;
+
+    return Semantics(
+      liveRegion: true,
+      label:
+          'Gợi ý từ ảnh: ${suggestionLabel ?? value.category}, độ tin cậy $confidencePercent phần trăm',
+      child: Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: BorderRadius.circular(AppRadii.lg),
+          border: Border.all(color: accent.withValues(alpha: 0.55)),
+          boxShadow: [
+            BoxShadow(
+              color: accent.withValues(alpha: 0.12),
+              blurRadius: 24,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppPalette.night,
+                    borderRadius: BorderRadius.circular(AppRadii.pill),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.auto_awesome_rounded,
+                        color: AppPalette.lime,
+                        size: 14,
+                      ),
+                      SizedBox(width: 5),
+                      Text(
+                        'NHẬN DIỆN VẬT LIỆU',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.7,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(AppRadii.pill),
+                  ),
+                  child: Text(
+                    '$confidencePercent% tin cậy',
+                    style: TextStyle(
+                      color: isHazard ? AppPalette.danger : AppPalette.night,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 15),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    color: accent,
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: Icon(
+                    _iconFor(value.category),
+                    color: isCautious ? AppPalette.night : Colors.white,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        suggestionLabel ?? 'Chưa khớp danh mục',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        isHazard
+                            ? 'Cần kiểm tra cảnh báo an toàn trước khi đóng gói.'
+                            : isCautious
+                            ? 'Ảnh còn mơ hồ — hãy kiểm tra kỹ gợi ý.'
+                            : 'Đã tìm thấy nhóm vật liệu phù hợp nhất.',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppPalette.muted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            if (value.detectedItems.isNotEmpty) ...[
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 7,
+                runSpacing: 7,
+                children: value.detectedItems
+                    .take(4)
+                    .map(
+                      (item) => Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 7,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppPalette.surface.withValues(alpha: 0.82),
+                          borderRadius: BorderRadius.circular(AppRadii.pill),
+                        ),
+                        child: Text(
+                          item.label,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    )
+                    .toList(),
+              ),
+            ],
+            for (final flag in value.safetyFlags.take(2)) ...[
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppPalette.surface.withValues(alpha: 0.88),
+                  borderRadius: BorderRadius.circular(AppRadii.md),
+                  border: Border.all(
+                    color: AppPalette.danger.withValues(alpha: 0.3),
+                  ),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(
+                      Icons.health_and_safety_rounded,
+                      color: AppPalette.danger,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 9),
+                    Expanded(
+                      child: Text(
+                        flag.message,
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            if (value.guidance.headline.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(
+                    Icons.tips_and_updates_outlined,
+                    color: AppPalette.primaryDark,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      value.guidance.headline,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            if (value.alternatives.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Khả năng khác: ${value.alternatives.take(2).map((item) => '${categoryLabel(item.category)} ${(item.confidence * 100).round()}%').join(' · ')}',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: AppPalette.muted),
+              ),
+            ],
+            const SizedBox(height: 14),
+            if (accepted)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
+                decoration: BoxDecoration(
+                  color: AppPalette.night,
+                  borderRadius: BorderRadius.circular(AppRadii.md),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.check_circle_rounded, color: AppPalette.lime),
+                    SizedBox(width: 8),
+                    Text(
+                      'Đã dùng gợi ý — bạn vẫn có thể đổi bên dưới',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            else
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppPalette.night,
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: enabled && suggestionLabel != null
+                      ? onAccept
+                      : null,
+                  icon: const Icon(Icons.touch_app_rounded),
+                  label: Text(
+                    suggestionLabel == null
+                        ? 'Danh mục này chưa được hỗ trợ'
+                        : 'Dùng gợi ý $suggestionLabel',
+                  ),
+                ),
+              ),
+            const SizedBox(height: 9),
+            Text(
+              'Kết quả có thể chưa chính xác khi ảnh tối, vật liệu bị che hoặc có nhiều loại lẫn nhau.',
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: AppPalette.muted),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  IconData _iconFor(String category) {
+    switch (category.toUpperCase()) {
+      case 'ORGANIC':
+        return Icons.compost_rounded;
+      case 'RECYCLABLE':
+        return Icons.recycling_rounded;
+      case 'HAZARDOUS':
+        return Icons.warning_amber_rounded;
+      default:
+        return Icons.category_rounded;
+    }
+  }
+}
+
+class _AiOrbitIcon extends StatefulWidget {
+  const _AiOrbitIcon();
+
+  @override
+  State<_AiOrbitIcon> createState() => _AiOrbitIconState();
+}
+
+class _AiOrbitIconState extends State<_AiOrbitIcon>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1800),
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!MediaQuery.disableAnimationsOf(context) && !_controller.isAnimating) {
+      _controller.repeat();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RotationTransition(
+      turns: _controller,
+      child: Container(
+        width: 52,
+        height: 52,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: AppPalette.lime, width: 2),
+        ),
+        child: const Icon(Icons.auto_awesome_rounded, color: AppPalette.lime),
+      ),
     );
   }
 }

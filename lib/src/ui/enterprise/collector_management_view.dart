@@ -11,6 +11,7 @@ class CollectorManagementView extends StatefulWidget {
 }
 
 class _CollectorManagementViewState extends State<CollectorManagementView> {
+  final _formKey = GlobalKey<FormState>();
   final _emailCtrl = TextEditingController();
   final _nameCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
@@ -18,6 +19,10 @@ class _CollectorManagementViewState extends State<CollectorManagementView> {
   bool _loading = true;
   bool _creating = false;
   bool _showPassword = false;
+  bool _hasLoaded = false;
+  String? _error;
+  int _loadRequest = 0;
+  final Set<int> _deletingCollectors = {};
 
   @override
   void initState() {
@@ -33,40 +38,44 @@ class _CollectorManagementViewState extends State<CollectorManagementView> {
     super.dispose();
   }
 
-  Future<void> _load() async {
-    setState(() => _loading = true);
+  Future<void> _load({bool showLoading = true, bool showErrors = true}) async {
+    final request = ++_loadRequest;
+    if (showLoading && mounted) setState(() => _loading = true);
     try {
       final collectors = await widget.controller.api.getCollectors();
-      if (!mounted) return;
-      setState(() => _collectors = collectors);
+      if (!mounted || request != _loadRequest) return;
+      setState(() {
+        _collectors = collectors;
+        _hasLoaded = true;
+        _error = null;
+      });
     } catch (e) {
-      if (!mounted) return;
-      showErrorSnack(context, e);
+      if (!mounted || request != _loadRequest) return;
+      setState(() => _error = friendlyError(e));
+      if (showErrors) showErrorSnack(context, e);
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && request == _loadRequest && showLoading) {
+        setState(() => _loading = false);
+      }
     }
   }
 
   Future<void> _create() async {
-    if (_emailCtrl.text.trim().isEmpty ||
-        _nameCtrl.text.trim().isEmpty ||
-        _passwordCtrl.text.trim().isEmpty) {
-      showSnack(context, 'Vui lòng nhập đủ thông tin nhân viên');
-      return;
-    }
+    if (_creating || !(_formKey.currentState?.validate() ?? false)) return;
     setState(() => _creating = true);
     try {
       await widget.controller.api.createCollector({
-        'email': _emailCtrl.text.trim(),
+        'email': _emailCtrl.text.trim().toLowerCase(),
         'fullName': _nameCtrl.text.trim(),
-        'password': _passwordCtrl.text.trim(),
+        'password': _passwordCtrl.text,
       });
       if (!mounted) return;
       showSnack(context, 'Đã tạo hồ sơ nhân viên');
       _emailCtrl.clear();
       _nameCtrl.clear();
       _passwordCtrl.clear();
-      await _load();
+      _formKey.currentState?.reset();
+      await _load(showLoading: false, showErrors: false);
     } catch (e) {
       if (!mounted) return;
       showErrorSnack(context, e);
@@ -75,33 +84,52 @@ class _CollectorManagementViewState extends State<CollectorManagementView> {
     }
   }
 
-  Future<void> _delete(int id) async {
+  Future<void> _delete(Collector collector) async {
+    if (_deletingCollectors.contains(collector.id) ||
+        enterpriseCollectorIsBusy(collector)) {
+      return;
+    }
     final ok = await confirmDialog(
       context,
-      'Xóa nhân viên này khỏi đội thu gom?',
+      'Lưu trữ ${collector.userName.trim().isEmpty ? 'nhân viên #${collector.id}' : collector.userName.trim()}? Tài khoản và toàn bộ lịch sử chuyến vẫn được giữ để đối soát.',
     );
-    if (!ok) return;
+    if (!mounted || !ok) return;
+    setState(() => _deletingCollectors.add(collector.id));
     try {
-      await widget.controller.api.deleteCollector(id);
-      await _load();
+      await widget.controller.api.deleteCollector(collector.id);
+      if (!mounted) return;
+      setState(() {
+        _collectors = _collectors
+            .where((item) => item.id != collector.id)
+            .toList();
+      });
+      showSnack(context, 'Đã lưu trữ hồ sơ nhân viên');
+      await _load(showLoading: false, showErrors: false);
     } catch (e) {
       if (!mounted) return;
       showErrorSnack(context, e);
+    } finally {
+      if (mounted) setState(() => _deletingCollectors.remove(collector.id));
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
+    if (_loading && !_hasLoaded) {
       return const AppLoadingView(label: 'Đang tập hợp đội ngũ…');
     }
+    if (!_hasLoaded) {
+      return _EnterpriseDataErrorView(
+        title: 'Chưa tải được danh sách đội ngũ',
+        message: _error ?? 'Vui lòng kiểm tra kết nối và thử lại.',
+        onRetry: () async {
+          await _load();
+        },
+      );
+    }
 
-    final available = _collectors
-        .where((collector) => collector.currentStatus == 'AVAILABLE')
-        .length;
-    final busy = _collectors
-        .where((collector) => collector.currentStatus == 'BUSY')
-        .length;
+    final available = _collectors.where(enterpriseCollectorIsAvailable).length;
+    final busy = _collectors.where(enterpriseCollectorIsBusy).length;
     final unavailable = _collectors.length - available - busy;
 
     return LayoutBuilder(
@@ -124,6 +152,10 @@ class _CollectorManagementViewState extends State<CollectorManagementView> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      if (_error case final error?) ...[
+                        _EnterpriseRefreshError(message: error, onRetry: _load),
+                        const SizedBox(height: 14),
+                      ],
                       SectionTitle(
                         'Đội thu gom',
                         eyebrow: 'CON NGƯỜI TẠO NÊN VẬN HÀNH',
@@ -236,7 +268,11 @@ class _CollectorManagementViewState extends State<CollectorManagementView> {
       physics: const NeverScrollableScrollPhysics(),
       itemCount: metrics.length,
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: width >= 820 ? 4 : 2,
+        crossAxisCount: width >= 820
+            ? 4
+            : width < 360 || MediaQuery.textScalerOf(context).scale(1) > 1.35
+            ? 1
+            : 2,
         mainAxisExtent: 112,
         crossAxisSpacing: 12,
         mainAxisSpacing: 12,
@@ -257,154 +293,184 @@ class _CollectorManagementViewState extends State<CollectorManagementView> {
     return AppSurface(
       padding: const EdgeInsets.all(20),
       shadow: true,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final columns = constraints.maxWidth >= 880
-              ? 3
-              : constraints.maxWidth >= 560
-              ? 2
-              : 1;
-          final spacing = 12.0;
-          final fieldWidth =
-              (constraints.maxWidth - spacing * (columns - 1)) / columns;
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [AppPalette.night, AppPalette.nightSoft],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
+      child: Form(
+        key: _formKey,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final columns = constraints.maxWidth >= 880
+                ? 3
+                : constraints.maxWidth >= 560
+                ? 2
+                : 1;
+            final spacing = 12.0;
+            final fieldWidth =
+                (constraints.maxWidth - spacing * (columns - 1)) / columns;
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [AppPalette.night, AppPalette.nightSoft],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(AppRadii.md),
                   ),
-                  borderRadius: BorderRadius.circular(AppRadii.md),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 42,
-                      height: 42,
-                      decoration: BoxDecoration(
-                        color: AppPalette.lime.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(AppRadii.sm),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: AppPalette.lime.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(AppRadii.sm),
+                        ),
+                        child: const Icon(
+                          Icons.person_add_alt_1_rounded,
+                          color: AppPalette.lime,
+                        ),
                       ),
-                      child: const Icon(
-                        Icons.person_add_alt_1_rounded,
-                        color: AppPalette.lime,
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Hồ sơ nhân viên mới',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              'Thông tin đăng nhập được cấp riêng cho nhân sự hiện trường.',
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(color: Colors.white70),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Wrap(
+                  spacing: spacing,
+                  runSpacing: 12,
+                  children: [
+                    SizedBox(
+                      width: fieldWidth,
+                      child: TextFormField(
+                        controller: _nameCtrl,
+                        textCapitalization: TextCapitalization.words,
+                        autofillHints: const [AutofillHints.name],
+                        decoration: inputDecoration(
+                          'Họ và tên',
+                          icon: Icons.badge_rounded,
+                        ),
+                        validator: (value) {
+                          final name = value?.trim() ?? '';
+                          if (name.isEmpty) return 'Vui lòng nhập họ và tên';
+                          if (name.length < 2) return 'Họ tên quá ngắn';
+                          return null;
+                        },
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Hồ sơ nhân viên mới',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w900,
+                    SizedBox(
+                      width: fieldWidth,
+                      child: TextFormField(
+                        controller: _emailCtrl,
+                        keyboardType: TextInputType.emailAddress,
+                        autofillHints: const [AutofillHints.email],
+                        decoration: inputDecoration(
+                          'Email đăng nhập',
+                          icon: Icons.alternate_email_rounded,
+                        ),
+                        validator: (value) {
+                          final email = value?.trim() ?? '';
+                          if (email.isEmpty) return 'Vui lòng nhập email';
+                          if (!RegExp(
+                            r'^[^\s@]+@[^\s@]+\.[^\s@]+$',
+                          ).hasMatch(email)) {
+                            return 'Email chưa đúng định dạng';
+                          }
+                          return null;
+                        },
+                      ),
+                    ),
+                    SizedBox(
+                      width: fieldWidth,
+                      child: TextFormField(
+                        controller: _passwordCtrl,
+                        obscureText: !_showPassword,
+                        autofillHints: const [AutofillHints.newPassword],
+                        onFieldSubmitted: (_) {
+                          if (!_creating) _create();
+                        },
+                        decoration:
+                            inputDecoration(
+                              'Mật khẩu khởi tạo',
+                              icon: Icons.lock_rounded,
+                            ).copyWith(
+                              suffixIcon: IconButton(
+                                tooltip: _showPassword
+                                    ? 'Ẩn mật khẩu'
+                                    : 'Hiện mật khẩu',
+                                onPressed: () => setState(
+                                  () => _showPassword = !_showPassword,
+                                ),
+                                icon: Icon(
+                                  _showPassword
+                                      ? Icons.visibility_off_rounded
+                                      : Icons.visibility_rounded,
+                                ),
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 3),
-                          Text(
-                            'Thông tin đăng nhập được cấp riêng cho nhân sự hiện trường.',
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(color: Colors.white70),
-                          ),
-                        ],
+                        validator: (value) {
+                          final password = value ?? '';
+                          if (password.isEmpty) return 'Vui lòng nhập mật khẩu';
+                          if (password.length < 8) {
+                            return 'Mật khẩu cần ít nhất 8 ký tự';
+                          }
+                          if (password.length > 72) {
+                            return 'Mật khẩu không được quá 72 ký tự';
+                          }
+                          return null;
+                        },
                       ),
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(height: 18),
-              Wrap(
-                spacing: spacing,
-                runSpacing: 12,
-                children: [
-                  SizedBox(
-                    width: fieldWidth,
-                    child: TextField(
-                      controller: _nameCtrl,
-                      textCapitalization: TextCapitalization.words,
-                      autofillHints: const [AutofillHints.name],
-                      decoration: inputDecoration(
-                        'Họ và tên',
-                        icon: Icons.badge_rounded,
-                      ),
-                    ),
-                  ),
-                  SizedBox(
-                    width: fieldWidth,
-                    child: TextField(
-                      controller: _emailCtrl,
-                      keyboardType: TextInputType.emailAddress,
-                      autofillHints: const [AutofillHints.email],
-                      decoration: inputDecoration(
-                        'Email đăng nhập',
-                        icon: Icons.alternate_email_rounded,
-                      ),
-                    ),
-                  ),
-                  SizedBox(
-                    width: fieldWidth,
-                    child: TextField(
-                      controller: _passwordCtrl,
-                      obscureText: !_showPassword,
-                      autofillHints: const [AutofillHints.newPassword],
-                      onSubmitted: (_) {
-                        if (!_creating) _create();
-                      },
-                      decoration:
-                          inputDecoration(
-                            'Mật khẩu khởi tạo',
-                            icon: Icons.lock_rounded,
-                          ).copyWith(
-                            suffixIcon: IconButton(
-                              tooltip: _showPassword
-                                  ? 'Ẩn mật khẩu'
-                                  : 'Hiện mật khẩu',
-                              onPressed: () => setState(
-                                () => _showPassword = !_showPassword,
+                const SizedBox(height: 18),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: SizedBox(
+                    width: constraints.maxWidth < 560 ? double.infinity : null,
+                    child: FilledButton.icon(
+                      onPressed: _creating ? null : _create,
+                      icon: _creating
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
                               ),
-                              icon: Icon(
-                                _showPassword
-                                    ? Icons.visibility_off_rounded
-                                    : Icons.visibility_rounded,
-                              ),
-                            ),
-                          ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 18),
-              Align(
-                alignment: Alignment.centerRight,
-                child: SizedBox(
-                  width: constraints.maxWidth < 560 ? double.infinity : null,
-                  child: FilledButton.icon(
-                    onPressed: _creating ? null : _create,
-                    icon: _creating
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Icon(Icons.add_task_rounded),
-                    label: Text(
-                      _creating ? 'Đang tạo hồ sơ…' : 'Thêm vào đội ngũ',
+                            )
+                          : const Icon(Icons.add_task_rounded),
+                      label: Text(
+                        _creating ? 'Đang tạo hồ sơ…' : 'Thêm vào đội ngũ',
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ],
-          );
-        },
+              ],
+            );
+          },
+        ),
       ),
     );
   }
@@ -413,6 +479,8 @@ class _CollectorManagementViewState extends State<CollectorManagementView> {
     final name = collector.userName.trim();
     final initial = name.isEmpty ? 'C' : name[0].toUpperCase();
     final collectorColor = statusColor(collector.currentStatus);
+    final deleting = _deletingCollectors.contains(collector.id);
+    final busy = enterpriseCollectorIsBusy(collector);
     return AppSurface(
       padding: const EdgeInsets.all(17),
       child: Column(
@@ -471,13 +539,21 @@ class _CollectorManagementViewState extends State<CollectorManagementView> {
                 ),
               ),
               IconButton(
-                tooltip: 'Xóa nhân viên',
-                onPressed: () => _delete(collector.id),
+                tooltip: busy
+                    ? 'Không thể lưu trữ khi nhân viên đang có chuyến'
+                    : 'Lưu trữ hồ sơ nhân viên',
+                onPressed: busy || deleting ? null : () => _delete(collector),
                 style: IconButton.styleFrom(
-                  foregroundColor: AppPalette.danger,
-                  backgroundColor: AppPalette.danger.withValues(alpha: 0.08),
+                  foregroundColor: AppPalette.muted,
+                  backgroundColor: AppPalette.muted.withValues(alpha: 0.08),
                 ),
-                icon: const Icon(Icons.delete_outline_rounded),
+                icon: deleting
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.archive_outlined),
               ),
             ],
           ),
@@ -508,11 +584,13 @@ class _CollectorManagementViewState extends State<CollectorManagementView> {
   }
 
   String _statusHint(String status) {
-    switch (status) {
+    switch (enterpriseNormalizedStatus(status)) {
       case 'AVAILABLE':
         return 'Có thể nhận chuyến';
       case 'BUSY':
         return 'Đang thực hiện chuyến';
+      case 'ON_THE_WAY':
+        return 'Đang đến điểm thu gom';
       case 'OFFLINE':
         return 'Chưa vào ca';
       default:

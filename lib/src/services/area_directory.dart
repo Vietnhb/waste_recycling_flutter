@@ -42,21 +42,108 @@ class AreaDirectory {
     return null;
   }
 
+  Province? provinceForWard(String wardCode) {
+    for (final province in provinces) {
+      if (province.wards.any((ward) => ward.code == wardCode)) {
+        return province;
+      }
+    }
+    return null;
+  }
+
+  /// Parses the enterprise service-area contract.
+  ///
+  /// `P:79` means the whole province; `W:26740` means one ward. Legacy
+  /// province-code CSV and recognizable text are migrated for old profiles.
+  Map<String, Set<String>> parseEnterpriseServiceArea(String rawValue) {
+    final result = <String, Set<String>>{};
+    final unresolved = <String>[];
+    for (final rawToken in rawValue.split(RegExp(r'[,;|]'))) {
+      final token = rawToken.trim();
+      if (token.isEmpty) continue;
+      final upper = token.toUpperCase();
+      if (upper == 'ALL' || upper == '*') {
+        for (final province in provinces) {
+          result[province.code] = <String>{};
+        }
+        continue;
+      }
+      if (upper.startsWith('P:')) {
+        final code = token.substring(2).trim();
+        if (provinceByCode(code) != null) {
+          result[code] = <String>{};
+        } else {
+          unresolved.add(token);
+        }
+        continue;
+      }
+      if (upper.startsWith('W:')) {
+        final code = token.substring(2).trim();
+        final province = provinceForWard(code);
+        if (province == null) {
+          unresolved.add(token);
+        } else if (!(result[province.code]?.isEmpty ?? false)) {
+          result.putIfAbsent(province.code, () => <String>{}).add(code);
+        }
+        continue;
+      }
+      if (provinceByCode(token) != null) {
+        result[token] = <String>{};
+        continue;
+      }
+      final province = provinceForWard(token);
+      if (province != null) {
+        if (!(result[province.code]?.isEmpty ?? false)) {
+          result.putIfAbsent(province.code, () => <String>{}).add(token);
+        }
+        continue;
+      }
+      unresolved.add(token);
+    }
+
+    if (unresolved.isNotEmpty) {
+      final legacyMatch = matchAddress(rawValue).provinceCode;
+      if (legacyMatch.isNotEmpty) result[legacyMatch] = <String>{};
+    }
+    return result;
+  }
+
+  String encodeEnterpriseServiceArea(Map<String, Set<String>> scopes) {
+    final tokens = <String>[];
+    for (final province in provinces) {
+      final wards = scopes[province.code];
+      if (wards == null) continue;
+      if (wards.isEmpty) {
+        tokens.add('P:${province.code}');
+      } else {
+        final validWards =
+            wards
+                .where((code) => wardByCode(province.code, code) != null)
+                .toList()
+              ..sort();
+        tokens.addAll(validWards.map((code) => 'W:$code'));
+      }
+    }
+    return tokens.join(',');
+  }
+
   ({String provinceCode, String wardCode}) matchAddress(String address) {
     final normalized = _normalize(address);
     String provinceCode = '';
     String wardCode = '';
 
     for (final province in provinces) {
-      final provinceNames = [
+      final provinceNames = <String>{
         province.name,
         province.nameEn,
         province.fullName,
         province.fullNameEn,
-      ].map(_normalize);
+        ..._provinceAliases(province),
+      }.map(_normalize);
 
       if (provinceNames.any(
-        (name) => name.isNotEmpty && normalized.contains(name),
+        (name) =>
+            name.isNotEmpty && _containsNormalizedPhrase(normalized, name),
       )) {
         provinceCode = province.code;
         wardCode = _bestWardCode(province, normalized);
@@ -142,6 +229,32 @@ class AreaDirectory {
     ward.name,
     ward.nameEn,
   ];
+
+  List<String> _provinceAliases(Province province) {
+    final normalizedName = _normalize(province.name);
+    final acronym = normalizedName
+        .split(RegExp(r'\s+'))
+        .where((word) => word.isNotEmpty)
+        .map((word) => word[0])
+        .join();
+    return [
+      if (acronym.length >= 2) acronym,
+      if (acronym.length >= 2) 'tp $acronym',
+      if (acronym.length >= 2) 'tp$acronym',
+      if (province.code == '79') ...['sai gon', 'saigon', 'tp hcm', 'tphcm'],
+    ];
+  }
+
+  bool _containsNormalizedPhrase(String text, String phrase) {
+    String words(String value) => value
+        .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
+        .trim()
+        .replaceAll(RegExp(r'\s+'), ' ');
+    final normalizedText = words(text);
+    final normalizedPhrase = words(phrase);
+    if (normalizedPhrase.isEmpty) return false;
+    return ' $normalizedText '.contains(' $normalizedPhrase ');
+  }
 
   String _normalize(String value) {
     final lower = value.toLowerCase().trim();

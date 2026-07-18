@@ -13,8 +13,12 @@ class _CollectorReportsViewState extends State<CollectorReportsView> {
   Collector? _collector;
   List<WasteReport> _reports = const [];
   bool _loading = true;
+  bool _refreshing = false;
   bool _loadFailed = false;
+  bool _hasPartialFailure = false;
   String? _updatingStatus;
+  int _loadToken = 0;
+  Timer? _realtimeDebounce;
   StreamSubscription<JsonMap>? _realtimeSub;
 
   @override
@@ -24,47 +28,77 @@ class _CollectorReportsViewState extends State<CollectorReportsView> {
     _realtimeSub = widget.controller.realtime.events.listen((event) {
       final type = asString(event['type']);
       if (type.startsWith('REPORT_') || type == 'COLLECTOR_STATUS_CHANGED') {
-        _load(showLoading: false);
+        _realtimeDebounce?.cancel();
+        _realtimeDebounce = Timer(
+          const Duration(milliseconds: 350),
+          () => _load(showLoading: false, silent: true),
+        );
       }
     });
   }
 
   @override
   void dispose() {
+    _realtimeDebounce?.cancel();
     _realtimeSub?.cancel();
     super.dispose();
   }
 
-  Future<void> _load({bool showLoading = true}) async {
-    if (showLoading) setState(() => _loading = true);
-    try {
-      final results = await Future.wait([
-        widget.controller.api.getCollectorProfile(),
-        widget.controller.api.getAssignedReports(),
-      ]);
-      if (!mounted) return;
-      setState(() {
-        _collector = results[0] as Collector;
-        _reports = results[1] as List<WasteReport>;
-        _loadFailed = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _loadFailed = _collector == null && _reports.isEmpty;
-      });
-      showErrorSnack(context, e);
-    } finally {
-      if (mounted && showLoading) setState(() => _loading = false);
+  Future<void> _load({bool showLoading = true, bool silent = false}) async {
+    final token = ++_loadToken;
+    if (showLoading && _collector == null && _reports.isEmpty) {
+      setState(() => _loading = true);
+    } else if (mounted) {
+      setState(() => _refreshing = true);
+    }
+
+    final profileFuture = _collectorHomeRequest(
+      widget.controller.api.getCollectorProfile(),
+    );
+    final reportsFuture = _collectorHomeRequest(
+      widget.controller.api.getAssignedReports(),
+    );
+    final profileResult = await profileFuture;
+    final reportsResult = await reportsFuture;
+    if (!mounted || token != _loadToken) return;
+
+    final failures = [
+      profileResult.error,
+      reportsResult.error,
+    ].whereType<Object>().toList();
+    setState(() {
+      if (profileResult.value case final value?) _collector = value;
+      if (reportsResult.value case final value?) _reports = value;
+      _loadFailed = reportsResult.error != null && _reports.isEmpty;
+      _hasPartialFailure = failures.isNotEmpty && !_loadFailed;
+      _loading = false;
+      _refreshing = false;
+    });
+    if (!silent && failures.isNotEmpty) {
+      showErrorSnack(context, failures.first);
     }
   }
 
   Future<void> _changeStatus(String status) async {
     if (_updatingStatus != null || _collector?.currentStatus == status) return;
+    if (_collector?.isActive == false) {
+      showSnack(
+        context,
+        'Hồ sơ đã được doanh nghiệp lưu trữ; bạn không thể mở ca mới.',
+      );
+      return;
+    }
+    final hasActiveWork = _reports.any(
+      (report) => _collectorNormalizedStatus(report.status) != 'COLLECTED',
+    );
+    if (hasActiveWork) {
+      showSnack(context, 'Hãy hoàn tất chuyến đang giao trước khi đổi ca');
+      return;
+    }
     setState(() => _updatingStatus = status);
     try {
       await widget.controller.api.updateCollectorStatus(status);
-      await _load(showLoading: false);
+      await _load(showLoading: false, silent: true);
     } catch (e) {
       if (!mounted) return;
       showErrorSnack(context, e);
@@ -74,19 +108,21 @@ class _CollectorReportsViewState extends State<CollectorReportsView> {
   }
 
   Future<void> _updateReport(WasteReport report) async {
-    if (report.status != 'ASSIGNED') {
-      final ok = await confirmDialog(
+    if (collectorNextReportStatus(report.status) == null) return;
+    if (!collectorCanAdvanceReport(report, _reports)) {
+      showSnack(
         context,
-        'Bạn chắc chắn muốn hoàn tất thu gom chuyến #${report.id}? Sau khi xác nhận, hệ thống sẽ cập nhật trạng thái và tính điểm cho người dân.',
+        'Hoàn tất chuyến đang thực hiện trước khi bắt đầu chuyến tiếp theo',
       );
-      if (!ok || !mounted) return;
+      return;
     }
     final updated = await showDialog<bool>(
       context: context,
+      barrierDismissible: false,
       builder: (context) =>
           CollectorStatusDialog(report: report, controller: widget.controller),
     );
-    if (updated == true) await _load(showLoading: false);
+    if (updated == true) await _load(showLoading: false, silent: true);
   }
 
   void _openReportMap(WasteReport report) {
@@ -96,7 +132,7 @@ class _CollectorReportsViewState extends State<CollectorReportsView> {
         builder: (context) => _CollectorNavigationScreen(
           report: report,
           controller: widget.controller,
-          onReportUpdated: _load,
+          onReportUpdated: () => _load(showLoading: false, silent: true),
         ),
       ),
     );
@@ -107,10 +143,31 @@ class _CollectorReportsViewState extends State<CollectorReportsView> {
     if (_loading && _collector == null && _reports.isEmpty) {
       return const AppLoadingView(label: 'Đang chuẩn bị lộ trình hôm nay…');
     }
-    final activeReports = _reports
-        .where((report) => report.status != 'COLLECTED')
-        .toList();
+    final activeReports =
+        _reports
+            .where(
+              (report) =>
+                  _collectorNormalizedStatus(report.status) != 'COLLECTED',
+            )
+            .toList()
+          ..sort(_collectorJobQueueCompare);
     final activeCount = activeReports.length;
+    final assignedCount = activeReports
+        .where(
+          (report) => _collectorNormalizedStatus(report.status) == 'ASSIGNED',
+        )
+        .length;
+    final onTheWayCount = activeReports
+        .where(
+          (report) => _collectorNormalizedStatus(report.status) == 'ON_THE_WAY',
+        )
+        .length;
+    final inProgressCount = activeReports
+        .where(
+          (report) =>
+              _collectorNormalizedStatus(report.status) == 'IN_PROGRESS',
+        )
+        .length;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -139,6 +196,13 @@ class _CollectorReportsViewState extends State<CollectorReportsView> {
                       : Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            if (_hasPartialFailure) ...[
+                              _CollectorTripsSyncNotice(
+                                onRetry: () =>
+                                    _load(showLoading: false, silent: true),
+                              ),
+                              const SizedBox(height: 14),
+                            ],
                             if (_collector != null)
                               _CollectorHeader(
                                 collector: _collector!,
@@ -148,15 +212,28 @@ class _CollectorReportsViewState extends State<CollectorReportsView> {
                               ),
                             const SizedBox(height: 30),
                             SectionTitle(
-                              'Các điểm cần đến',
-                              eyebrow: 'LỘ TRÌNH TRONG CA',
+                              'Việc cần làm hôm nay',
+                              eyebrow: 'HÀNG ĐỢI THỰC ĐỊA',
                               subtitle: activeReports.isEmpty
                                   ? 'Bạn đã xử lý hết những chuyến đang được giao.'
-                                  : '$activeCount điểm đang chờ bạn cập nhật tiến độ',
+                                  : '$activeCount chuyến được xếp theo giai đoạn và mức ưu tiên',
                               action: IconButton.filledTonal(
                                 tooltip: 'Tải lại danh sách nhiệm vụ',
-                                onPressed: () => _load(showLoading: false),
-                                icon: const Icon(Icons.refresh_rounded),
+                                onPressed: _refreshing
+                                    ? null
+                                    : () => _load(
+                                        showLoading: false,
+                                        silent: true,
+                                      ),
+                                icon: _refreshing
+                                    ? const SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : const Icon(Icons.refresh_rounded),
                               ),
                             ),
                             if (activeReports.isEmpty)
@@ -165,7 +242,13 @@ class _CollectorReportsViewState extends State<CollectorReportsView> {
                                 title: 'Ca làm đang thông thoáng',
                                 icon: Icons.route_rounded,
                               )
-                            else
+                            else ...[
+                              _CollectorQueueSummary(
+                                assignedCount: assignedCount,
+                                onTheWayCount: onTheWayCount,
+                                inProgressCount: inProgressCount,
+                              ),
+                              const SizedBox(height: 16),
                               LayoutBuilder(
                                 builder: (context, listConstraints) {
                                   final twoColumns =
@@ -185,15 +268,19 @@ class _CollectorReportsViewState extends State<CollectorReportsView> {
                                             onOpenMap: () =>
                                                 _openReportMap(report),
                                             onUpdate:
-                                                report.status == 'COLLECTED'
-                                                ? null
-                                                : () => _updateReport(report),
+                                                collectorCanAdvanceReport(
+                                                  report,
+                                                  activeReports,
+                                                )
+                                                ? () => _updateReport(report)
+                                                : null,
                                           ),
                                         ),
                                     ],
                                   );
                                 },
                               ),
+                            ],
                           ],
                         ),
                 ),
@@ -202,6 +289,189 @@ class _CollectorReportsViewState extends State<CollectorReportsView> {
           ),
         );
       },
+    );
+  }
+}
+
+int _collectorJobQueueCompare(WasteReport a, WasteReport b) {
+  int rank(String status) {
+    switch (_collectorNormalizedStatus(status)) {
+      case 'IN_PROGRESS':
+        return 0;
+      case 'ON_THE_WAY':
+        return 1;
+      case 'ASSIGNED':
+        return 2;
+      default:
+        return 3;
+    }
+  }
+
+  final stageCompare = rank(a.status).compareTo(rank(b.status));
+  if (stageCompare != 0) return stageCompare;
+  final priorityCompare = (b.priorityScore ?? 0).compareTo(
+    a.priorityScore ?? 0,
+  );
+  if (priorityCompare != 0) return priorityCompare;
+  final aCreated = a.createdAt;
+  final bCreated = b.createdAt;
+  if (aCreated != null && bCreated != null) {
+    final createdCompare = aCreated.compareTo(bCreated);
+    if (createdCompare != 0) return createdCompare;
+  } else if (aCreated != null) {
+    return -1;
+  } else if (bCreated != null) {
+    return 1;
+  }
+  return a.id.compareTo(b.id);
+}
+
+class _CollectorTripsSyncNotice extends StatelessWidget {
+  const _CollectorTripsSyncNotice({required this.onRetry});
+
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      container: true,
+      liveRegion: true,
+      label:
+          'Một phần dữ liệu ca làm chưa đồng bộ. Danh sách gần nhất vẫn được giữ lại.',
+      child: AppSurface(
+        color: AppPalette.cream,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        child: Row(
+          children: [
+            const Icon(Icons.sync_problem_rounded, color: AppPalette.amber),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Text(
+                'Một phần dữ liệu chưa đồng bộ; danh sách gần nhất vẫn được giữ lại.',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+            IconButton(
+              tooltip: 'Thử đồng bộ lại',
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh_rounded),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CollectorQueueSummary extends StatelessWidget {
+  const _CollectorQueueSummary({
+    required this.assignedCount,
+    required this.onTheWayCount,
+    required this.inProgressCount,
+  });
+
+  final int assignedCount;
+  final int onTheWayCount;
+  final int inProgressCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final items = [
+      (
+        label: 'Chờ khởi hành',
+        value: assignedCount,
+        icon: Icons.assignment_turned_in_rounded,
+        color: AppPalette.violet,
+      ),
+      (
+        label: 'Đang di chuyển',
+        value: onTheWayCount,
+        icon: Icons.local_shipping_rounded,
+        color: AppPalette.sky,
+      ),
+      (
+        label: 'Đang thu gom',
+        value: inProgressCount,
+        icon: Icons.recycling_rounded,
+        color: AppPalette.amber,
+      ),
+    ];
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final textScale = MediaQuery.textScalerOf(context).scale(1);
+        final stack = constraints.maxWidth < 520 || textScale > 1.35;
+        final itemWidth = stack
+            ? constraints.maxWidth
+            : (constraints.maxWidth - 20) / 3;
+        return Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            for (final item in items)
+              SizedBox(
+                width: itemWidth,
+                child: _CollectorQueueMetric(
+                  label: item.label,
+                  value: item.value,
+                  icon: item.icon,
+                  color: item.color,
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _CollectorQueueMetric extends StatelessWidget {
+  const _CollectorQueueMetric({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+  });
+
+  final String label;
+  final int value;
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppSurface(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      color: color.withValues(alpha: 0.07),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(AppRadii.sm),
+            ),
+            child: Icon(icon, color: color, size: 20),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w800),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            '$value',
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+              color: color,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -221,11 +491,10 @@ class _CollectorHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final status = collector.currentStatus;
+    final status = _collectorNormalizedStatus(collector.currentStatus);
+    final canChangeShift = activeCount == 0 && collector.isActive;
     final statusActions = [
       (value: 'AVAILABLE', label: 'Sẵn sàng', icon: Icons.bolt_rounded),
-      (value: 'BUSY', label: 'Tạm bận', icon: Icons.pause_rounded),
-      (value: 'ON_THE_WAY', label: 'Đang đi', icon: Icons.navigation_rounded),
       (value: 'OFFLINE', label: 'Kết ca', icon: Icons.bedtime_rounded),
     ];
 
@@ -359,7 +628,11 @@ class _CollectorHeader extends StatelessWidget {
                         ),
                         const SizedBox(height: 20),
                         Text(
-                          'Cập nhật trạng thái ca làm',
+                          !collector.isActive
+                              ? 'Hồ sơ đã được lưu trữ · chỉ xem lịch sử'
+                              : canChangeShift
+                              ? 'Trạng thái nhận việc'
+                              : 'Trạng thái được đồng bộ theo chuyến',
                           style: Theme.of(context).textTheme.labelMedium
                               ?.copyWith(
                                 color: Colors.white.withValues(alpha: 0.72),
@@ -367,24 +640,60 @@ class _CollectorHeader extends StatelessWidget {
                               ),
                         ),
                         const SizedBox(height: 10),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            for (final action in statusActions)
-                              _StatusAction(
-                                label: action.label,
-                                icon: action.icon,
-                                selected: status == action.value,
-                                busy: updatingStatus == action.value,
-                                onPressed:
-                                    updatingStatus != null ||
-                                        status == action.value
-                                    ? null
-                                    : () => onStatusChanged(action.value),
+                        if (canChangeShift)
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              for (final action in statusActions)
+                                _StatusAction(
+                                  label: action.label,
+                                  icon: action.icon,
+                                  selected: status == action.value,
+                                  busy: updatingStatus == action.value,
+                                  onPressed:
+                                      updatingStatus != null ||
+                                          status == action.value
+                                      ? null
+                                      : () => onStatusChanged(action.value),
+                                ),
+                            ],
+                          )
+                        else
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 13,
+                              vertical: 11,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(AppRadii.md),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.12),
                               ),
-                          ],
-                        ),
+                            ),
+                            child: const Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Icon(
+                                  Icons.lock_clock_rounded,
+                                  color: AppPalette.lime,
+                                  size: 19,
+                                ),
+                                SizedBox(width: 9),
+                                Expanded(
+                                  child: Text(
+                                    'Hãy hoàn tất chuyến đang giao trước khi kết ca. “Đang đi” và “Đang bận” được hệ thống cập nhật tự động.',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                       ],
                     );
                   },
@@ -582,11 +891,15 @@ class _DriverStatusBadge extends StatelessWidget {
         children: [
           Icon(statusIcon(status), size: 16, color: statusColor(status)),
           const SizedBox(width: 6),
-          Text(
-            statusText(status),
-            style: TextStyle(
-              color: statusColor(status),
-              fontWeight: FontWeight.w900,
+          Flexible(
+            child: Text(
+              statusText(status),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: statusColor(status),
+                fontWeight: FontWeight.w900,
+              ),
             ),
           ),
         ],
@@ -608,7 +921,10 @@ class _CollectorJobCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isOnTheWay = report.status == 'ON_THE_WAY';
+    final normalizedStatus = _collectorNormalizedStatus(report.status);
+    final isFieldActive =
+        normalizedStatus == 'ON_THE_WAY' || normalizedStatus == 'IN_PROGRESS';
+    final actionLabel = collectorNextReportActionLabel(report.status);
     final category = _collectorCategoryLabel(report.categoryName);
     final address = formatAddressLine(
       report.addressNumber,
@@ -622,62 +938,87 @@ class _CollectorJobCard extends StatelessWidget {
     return Semantics(
       container: true,
       label:
-          'Chuyến số ${report.id}, $category, ${statusText(report.status)}${address.isEmpty ? '' : ', $address'}',
+          'Chuyến số ${report.id}, $category, ${collectorReportStatusText(report.status)}${address.isEmpty ? '' : ', $address'}',
       child: Card(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
-              child: Row(
-                children: [
-                  Container(
-                    width: 46,
-                    height: 46,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          statusColor(report.status).withValues(alpha: 0.18),
-                          AppPalette.mint,
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final textScale = MediaQuery.textScalerOf(context).scale(1);
+                  final stacked = constraints.maxWidth < 360 || textScale > 1.3;
+                  final identity = Row(
+                    children: [
+                      Container(
+                        width: 46,
+                        height: 46,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              collectorReportStatusColor(
+                                report.status,
+                              ).withValues(alpha: 0.18),
+                              AppPalette.mint,
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(AppRadii.md),
+                        ),
+                        child: Icon(
+                          _collectorCategoryIcon(report.categoryName),
+                          color: collectorReportStatusColor(report.status),
+                          size: 24,
+                        ),
                       ),
-                      borderRadius: BorderRadius.circular(AppRadii.md),
-                    ),
-                    child: Icon(
-                      _collectorCategoryIcon(report.categoryName),
-                      color: statusColor(report.status),
-                      size: 24,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'CHUYẾN #${report.id}',
+                              style: Theme.of(context).textTheme.labelSmall
+                                  ?.copyWith(
+                                    color: AppPalette.primary,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 1.15,
+                                  ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              category,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  );
+
+                  if (stacked) {
+                    return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'CHUYẾN #${report.id}',
-                          style: Theme.of(context).textTheme.labelSmall
-                              ?.copyWith(
-                                color: AppPalette.primary,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 1.15,
-                              ),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          category,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
+                        identity,
+                        const SizedBox(height: 10),
+                        _CollectorReportStatusChip(report.status),
                       ],
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  StatusChip(report.status),
-                ],
+                    );
+                  }
+
+                  return Row(
+                    children: [
+                      Expanded(child: identity),
+                      const SizedBox(width: 10),
+                      _CollectorReportStatusChip(report.status),
+                    ],
+                  );
+                },
               ),
             ),
             _ReportMapPreview(report: report, onTap: onOpenMap),
@@ -686,6 +1027,8 @@ class _CollectorJobCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  _CollectorWorkflowStrip(status: report.status),
+                  const SizedBox(height: 17),
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -747,12 +1090,18 @@ class _CollectorJobCard extends StatelessWidget {
                             ],
                           ),
                         ),
-                        if (isOnTheWay)
-                          const Tooltip(
-                            message: 'Chuyến đang được thực hiện',
+                        if (isFieldActive)
+                          Tooltip(
+                            message: normalizedStatus == 'IN_PROGRESS'
+                                ? 'Đang thu gom tại điểm'
+                                : 'Đang di chuyển tới điểm',
                             child: Icon(
-                              Icons.near_me_rounded,
-                              color: AppPalette.sky,
+                              normalizedStatus == 'IN_PROGRESS'
+                                  ? Icons.recycling_rounded
+                                  : Icons.near_me_rounded,
+                              color: normalizedStatus == 'IN_PROGRESS'
+                                  ? AppPalette.amber
+                                  : AppPalette.sky,
                             ),
                           ),
                       ],
@@ -782,17 +1131,14 @@ class _CollectorJobCard extends StatelessWidget {
                             SizedBox(
                               width: buttonWidth,
                               child: FilledButton.icon(
+                                key: ValueKey(
+                                  'collector-report-action-${report.id}',
+                                ),
                                 onPressed: onUpdate,
                                 icon: Icon(
-                                  report.status == 'ASSIGNED'
-                                      ? Icons.local_shipping_rounded
-                                      : Icons.task_alt_rounded,
+                                  collectorNextReportActionIcon(report.status),
                                 ),
-                                label: Text(
-                                  report.status == 'ASSIGNED'
-                                      ? 'Bắt đầu chuyến'
-                                      : 'Hoàn tất thu gom',
-                                ),
+                                label: Text(actionLabel ?? 'Cập nhật chuyến'),
                               ),
                             ),
                         ],
@@ -850,7 +1196,7 @@ class _ReportMapPreview extends StatelessWidget {
               top: 10,
               child: _MapLabel(
                 icon: Icons.local_shipping_rounded,
-                text: statusText(report.status),
+                text: collectorReportStatusText(report.status),
               ),
             ),
             const Positioned(
@@ -861,15 +1207,19 @@ class _ReportMapPreview extends StatelessWidget {
                 children: [
                   Icon(Icons.map_rounded, color: Colors.white, size: 18),
                   SizedBox(width: 7),
-                  Text(
-                    'Chạm để xem lộ trình thực tế',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 12,
+                  Expanded(
+                    child: Text(
+                      'Chạm để xem lộ trình thực tế',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 12,
+                      ),
                     ),
                   ),
-                  Spacer(),
+                  SizedBox(width: 7),
                   Icon(
                     Icons.arrow_forward_rounded,
                     color: AppPalette.lime,
@@ -1121,7 +1471,7 @@ class _CollectorNavigationScreenState
         '/route/v1/driving/${current.longitude},${current.latitude};${destination.longitude},${destination.latitude}',
         {'overview': 'full', 'geometries': 'geojson', 'steps': 'false'},
       );
-      final response = await http.get(uri);
+      final response = await http.get(uri).timeout(const Duration(seconds: 8));
       if (response.statusCode != 200) {
         throw Exception('Không lấy được tuyến đường');
       }
@@ -1191,16 +1541,10 @@ class _CollectorNavigationScreenState
   }
 
   Future<void> _updateReport() async {
-    if (widget.report.status == 'COLLECTED') return;
-    if (widget.report.status != 'ASSIGNED') {
-      final ok = await confirmDialog(
-        context,
-        'Bạn chắc chắn muốn hoàn tất thu gom chuyến #${widget.report.id}? Sau khi xác nhận, hệ thống sẽ cập nhật trạng thái và tính điểm cho người dân.',
-      );
-      if (!ok || !mounted) return;
-    }
+    if (collectorNextReportStatus(widget.report.status) == null) return;
     final updated = await showDialog<bool>(
       context: context,
+      barrierDismissible: false,
       builder: (context) => CollectorStatusDialog(
         report: widget.report,
         controller: widget.controller,
@@ -1322,7 +1666,7 @@ class _CollectorNavigationScreenState
                   constraints: const BoxConstraints(maxWidth: 720),
                   child: _NavigationBottomPanel(
                     report: report,
-                    onUpdate: report.status == 'COLLECTED'
+                    onUpdate: collectorNextReportStatus(report.status) == null
                         ? null
                         : _updateReport,
                   ),
@@ -1358,6 +1702,7 @@ class _NavigationBottomPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final actionLabel = collectorNextReportActionLabel(report.status);
     final address = formatAddressLine(
       report.addressNumber,
       report.addressDetail,
@@ -1429,8 +1774,17 @@ class _NavigationBottomPanel extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 10),
-                StatusChip(report.status),
+                _CollectorReportStatusChip(report.status),
               ],
+            ),
+            const SizedBox(height: 14),
+            LayoutBuilder(
+              builder: (context, constraints) => _CollectorWorkflowStrip(
+                status: report.status,
+                compact:
+                    constraints.maxWidth < 390 ||
+                    MediaQuery.textScalerOf(context).scale(1) > 1.35,
+              ),
             ),
             const SizedBox(height: 14),
             Container(
@@ -1517,17 +1871,14 @@ class _NavigationBottomPanel extends StatelessWidget {
                       SizedBox(
                         width: width,
                         child: FilledButton.icon(
+                          key: ValueKey(
+                            'collector-navigation-action-${report.id}',
+                          ),
                           onPressed: onUpdate,
                           icon: Icon(
-                            report.status == 'ASSIGNED'
-                                ? Icons.local_shipping_rounded
-                                : Icons.task_alt_rounded,
+                            collectorNextReportActionIcon(report.status),
                           ),
-                          label: Text(
-                            report.status == 'ASSIGNED'
-                                ? 'Bắt đầu chuyến'
-                                : 'Hoàn tất thu gom',
-                          ),
+                          label: Text(actionLabel ?? 'Cập nhật chuyến'),
                         ),
                       ),
                   ],
@@ -1725,10 +2076,7 @@ class _CollectorReportMap extends StatelessWidget {
         ),
       ),
       children: [
-        TileLayer(
-          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-          userAgentPackageName: 'com.example.waste_recycling_flutter',
-        ),
+        appMapTileLayer(),
         if (routePoints.length > 1)
           PolylineLayer(
             polylines: [
@@ -1777,6 +2125,7 @@ class _CollectorReportMap extends StatelessWidget {
             ),
           ],
         ),
+        appMapAttribution(),
       ],
     );
   }

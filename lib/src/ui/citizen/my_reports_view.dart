@@ -17,6 +17,7 @@ class _MyReportsViewState extends State<MyReportsView> {
   bool _loading = true;
   bool _sendingComplaint = false;
   String _filter = 'ALL';
+  final Set<int> _expandedJourneyIds = <int>{};
   StreamSubscription<JsonMap>? _realtimeSub;
 
   @override
@@ -95,17 +96,23 @@ class _MyReportsViewState extends State<MyReportsView> {
     return null;
   }
 
+  bool _hasLocation(WasteReport report) {
+    return report.latitude >= -90 &&
+        report.latitude <= 90 &&
+        report.longitude >= -180 &&
+        report.longitude <= 180 &&
+        !(report.latitude == 0 && report.longitude == 0);
+  }
+
   Future<void> _submitComplaint(int reportId) async {
-    if (_complaintCtrl.text.trim().isEmpty) {
-      showSnack(context, 'Vui lòng nhập nội dung khiếu nại');
+    final description = _complaintCtrl.text.trim();
+    if (description.length < 10) {
+      showSnack(context, 'Vui lòng mô tả vấn đề bằng ít nhất 10 ký tự');
       return;
     }
     setState(() => _sendingComplaint = true);
     try {
-      await widget.controller.api.createComplaint(
-        reportId,
-        _complaintCtrl.text.trim(),
-      );
+      await widget.controller.api.createComplaint(reportId, description);
       if (!mounted) return;
       showSnack(context, 'Đã gửi khiếu nại');
       setState(() {
@@ -202,6 +209,7 @@ class _MyReportsViewState extends State<MyReportsView> {
 
   Widget _buildReport(WasteReport report) {
     final complaint = _complaintFor(report.id);
+    final journeyExpanded = _expandedJourneyIds.contains(report.id);
     Widget? complaintArea;
     if (report.status.toUpperCase() == 'COLLECTED') {
       if (complaint != null) {
@@ -237,13 +245,147 @@ class _MyReportsViewState extends State<MyReportsView> {
       trailing: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _CitizenTrackingStrip(report.status),
+          OutlinedButton.icon(
+            onPressed: () => setState(() {
+              if (journeyExpanded) {
+                _expandedJourneyIds.remove(report.id);
+              } else {
+                _expandedJourneyIds.add(report.id);
+              }
+            }),
+            icon: Icon(
+              journeyExpanded
+                  ? Icons.keyboard_arrow_up_rounded
+                  : Icons.route_rounded,
+              size: 19,
+            ),
+            label: Text(
+              journeyExpanded ? 'Thu gọn hành trình' : 'Xem hành trình',
+            ),
+          ),
+          if (journeyExpanded) ...[
+            const SizedBox(height: 12),
+            _CitizenTrackingStrip(report.status),
+            if (_hasLocation(report)) ...[
+              const SizedBox(height: 12),
+              _CitizenReportLocationMap(report: report),
+            ],
+          ],
           if (complaintArea != null) ...[
             const SizedBox(height: 12),
             complaintArea,
           ],
         ],
       ),
+    );
+  }
+}
+
+class _CitizenReportLocationMap extends StatelessWidget {
+  const _CitizenReportLocationMap({required this.report});
+
+  final WasteReport report;
+
+  @override
+  Widget build(BuildContext context) {
+    final location = LatLng(report.latitude, report.longitude);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(
+              Icons.location_on_rounded,
+              size: 18,
+              color: AppPalette.coral,
+            ),
+            const SizedBox(width: 7),
+            Text(
+              'Vị trí của báo cáo #${report.id}',
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+          ],
+        ),
+        const SizedBox(height: 9),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(AppRadii.lg),
+          child: SizedBox(
+            height: 210,
+            child: Stack(
+              children: [
+                FlutterMap(
+                  key: ValueKey('citizen-report-map-${report.id}'),
+                  options: MapOptions(
+                    initialCenter: location,
+                    initialZoom: 15.5,
+                    minZoom: 5,
+                    maxZoom: 19,
+                    interactionOptions: const InteractionOptions(
+                      flags: InteractiveFlag.none,
+                    ),
+                  ),
+                  children: [
+                    appMapTileLayer(),
+                    MarkerLayer(
+                      markers: [
+                        Marker(
+                          point: location,
+                          width: 54,
+                          height: 54,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: AppPalette.coral,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: AppPalette.surface,
+                                width: 4,
+                              ),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Color(0x40082F2B),
+                                  blurRadius: 14,
+                                  offset: Offset(0, 6),
+                                ),
+                              ],
+                            ),
+                            child: const Icon(
+                              Icons.delete_outline_rounded,
+                              color: Colors.white,
+                              size: 24,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    appMapAttribution(),
+                  ],
+                ),
+                Positioned(
+                  left: 10,
+                  top: 10,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 7,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppPalette.surface.withValues(alpha: 0.94),
+                      borderRadius: BorderRadius.circular(AppRadii.pill),
+                    ),
+                    child: const Text(
+                      'Bản đồ trong báo cáo',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -500,9 +642,13 @@ class _ComplaintComposer extends StatelessWidget {
             controller: controller,
             minLines: 3,
             maxLines: 5,
-            decoration: inputDecoration('Nội dung khiếu nại').copyWith(
+            maxLength: 2000,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: inputDecoration('Nội dung phản hồi').copyWith(
               hintText: 'Mô tả điều chưa đúng trong chuyến thu gom...',
               alignLabelWithHint: true,
+              helperText:
+                  'Nêu rõ tình trạng để đội vận hành kiểm tra nhanh hơn',
             ),
           ),
           const SizedBox(height: 10),
@@ -511,7 +657,7 @@ class _ComplaintComposer extends StatelessWidget {
               Expanded(
                 child: FilledButton(
                   onPressed: submitting ? null : onSubmit,
-                  child: Text(submitting ? 'Đang gửi...' : 'Gửi khiếu nại'),
+                  child: Text(submitting ? 'Đang gửi...' : 'Gửi phản hồi'),
                 ),
               ),
               const SizedBox(width: 8),
@@ -542,8 +688,10 @@ class _CitizenTrackingStrip extends StatelessWidget {
         return 2;
       case 'ON_THE_WAY':
         return 3;
-      case 'COLLECTED':
+      case 'IN_PROGRESS':
         return 4;
+      case 'COLLECTED':
+        return 5;
       default:
         return 0;
     }
@@ -578,6 +726,7 @@ class _CitizenTrackingStrip extends StatelessWidget {
       ('Tiếp nhận', Icons.inventory_2_rounded),
       ('Phân công', Icons.person_pin_rounded),
       ('Đang đến', Icons.local_shipping_rounded),
+      ('Đang gom', Icons.recycling_rounded),
       ('Hoàn tất', Icons.check_rounded),
     ];
 
@@ -586,6 +735,8 @@ class _CitizenTrackingStrip extends StatelessWidget {
       decoration: BoxDecoration(
         color: status.toUpperCase() == 'ON_THE_WAY'
             ? AppPalette.sky.withValues(alpha: 0.09)
+            : status.toUpperCase() == 'IN_PROGRESS'
+            ? AppPalette.jade.withValues(alpha: 0.09)
             : AppPalette.mint.withValues(alpha: 0.72),
         borderRadius: BorderRadius.circular(AppRadii.md),
         border: Border.all(color: AppPalette.line.withValues(alpha: 0.7)),
@@ -658,6 +809,25 @@ class _CitizenTrackingStrip extends StatelessWidget {
                 Expanded(
                   child: Text(
                     'Thời gian đến chưa được backend cung cấp.',
+                    style: TextStyle(
+                      color: AppPalette.muted,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+          if (status.toUpperCase() == 'IN_PROGRESS') ...[
+            const SizedBox(height: 10),
+            const Row(
+              children: [
+                Icon(Icons.recycling_rounded, size: 15, color: AppPalette.jade),
+                SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Người thu gom đã đến nơi và đang xác nhận khối lượng, phân loại.',
                     style: TextStyle(
                       color: AppPalette.muted,
                       fontSize: 11,

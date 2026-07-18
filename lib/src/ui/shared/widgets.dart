@@ -5,14 +5,20 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../core/error_helpers.dart';
 import '../../core/json_helpers.dart';
+import '../../features/operations/domain/operation_workflow.dart';
 import '../../models/models.dart';
 import 'app_theme.dart';
 
 export 'app_theme.dart';
 
-InputDecoration inputDecoration(String label, {IconData? icon}) {
+InputDecoration inputDecoration(
+  String label, {
+  IconData? icon,
+  String? helperText,
+}) {
   return InputDecoration(
     labelText: label,
+    helperText: helperText,
     prefixIcon: icon == null ? null : Icon(icon, size: 21),
   );
 }
@@ -115,17 +121,19 @@ Widget remoteImage(String? url, {double height = 150}) {
 }
 
 String statusText(String status) {
-  switch (status.toUpperCase()) {
-    case 'PENDING':
-      return 'Chờ xử lý';
-    case 'ACCEPTED':
-      return 'Đã tiếp nhận';
-    case 'ASSIGNED':
-      return 'Đã phân công';
-    case 'ON_THE_WAY':
-      return 'Đang trên đường';
-    case 'COLLECTED':
-      return 'Đã thu gom';
+  final reportStage = ReportStage.parse(status);
+  if (reportStage != ReportStage.unknown) {
+    return switch (reportStage) {
+      ReportStage.pending => 'Chờ xử lý',
+      ReportStage.accepted => 'Đã tiếp nhận',
+      ReportStage.assigned => 'Đã phân công',
+      ReportStage.onTheWay => 'Đang trên đường',
+      ReportStage.inProgress => 'Đang thu gom',
+      ReportStage.collected => 'Đã thu gom',
+      ReportStage.unknown => status,
+    };
+  }
+  switch (status.trim().toUpperCase()) {
     case 'REJECTED':
       return 'Đã từ chối';
     case 'AVAILABLE':
@@ -144,20 +152,26 @@ String statusText(String status) {
 }
 
 Color statusColor(String status) {
-  switch (status.toUpperCase()) {
-    case 'PENDING':
+  switch (ReportStage.parse(status)) {
+    case ReportStage.pending:
       return AppPalette.amber;
-    case 'ACCEPTED':
+    case ReportStage.accepted:
       return AppPalette.primary;
-    case 'ASSIGNED':
+    case ReportStage.assigned:
       return AppPalette.violet;
-    case 'ON_THE_WAY':
+    case ReportStage.onTheWay:
       return AppPalette.sky;
+    case ReportStage.inProgress:
+      return AppPalette.jade;
+    case ReportStage.collected:
+      return AppPalette.primaryDark;
+    case ReportStage.unknown:
+      break;
+  }
+  switch (status.trim().toUpperCase()) {
     case 'ACTIVE':
     case 'AVAILABLE':
       return AppPalette.jade;
-    case 'COLLECTED':
-      return AppPalette.primaryDark;
     case 'BUSY':
     case 'INACTIVE':
       return Colors.orange;
@@ -170,17 +184,23 @@ Color statusColor(String status) {
 }
 
 IconData statusIcon(String status) {
-  switch (status.toUpperCase()) {
-    case 'PENDING':
+  switch (ReportStage.parse(status)) {
+    case ReportStage.pending:
       return Icons.hourglass_empty_rounded;
-    case 'ACCEPTED':
+    case ReportStage.accepted:
       return Icons.thumb_up_alt_rounded;
-    case 'ASSIGNED':
+    case ReportStage.assigned:
       return Icons.assignment_ind_rounded;
-    case 'ON_THE_WAY':
+    case ReportStage.onTheWay:
       return Icons.local_shipping_rounded;
-    case 'COLLECTED':
+    case ReportStage.inProgress:
+      return Icons.recycling_rounded;
+    case ReportStage.collected:
       return Icons.check_circle_rounded;
+    case ReportStage.unknown:
+      break;
+  }
+  switch (status.trim().toUpperCase()) {
     case 'AVAILABLE':
     case 'ACTIVE':
       return Icons.play_circle_rounded;
@@ -262,46 +282,62 @@ class SectionTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (eyebrow case final eyebrow?) ...[
-                  Text(
-                    eyebrow.toUpperCase(),
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: AppPalette.primary,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 1.4,
-                    ),
-                  ),
-                  const SizedBox(height: 5),
-                ],
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final copy = Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (eyebrow case final eyebrow?) ...[
                 Text(
-                  title,
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  eyebrow.toUpperCase(),
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: AppPalette.primaryDark,
                     fontWeight: FontWeight.w900,
-                    letterSpacing: -0.55,
+                    letterSpacing: 1.4,
                   ),
                 ),
-                if (subtitle case final subtitle?) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: AppPalette.muted,
-                      height: 1.35,
-                    ),
-                  ),
-                ],
+                const SizedBox(height: 5),
               ],
-            ),
-          ),
-          if (action case final action?) ...[const SizedBox(width: 12), action],
-        ],
+              Text(
+                title,
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -0.55,
+                ),
+              ),
+              if (subtitle case final subtitle?) ...[
+                const SizedBox(height: 4),
+                Text(
+                  subtitle,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: AppPalette.muted,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ],
+          );
+          final stackAction =
+              action != null &&
+              (constraints.maxWidth < 360 ||
+                  MediaQuery.textScalerOf(context).scale(1) > 1.35);
+          if (stackAction) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [copy, const SizedBox(height: 10), action!],
+            );
+          }
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(child: copy),
+              if (action case final action?) ...[
+                const SizedBox(width: 12),
+                action,
+              ],
+            ],
+          );
+        },
       ),
     );
   }
@@ -398,12 +434,14 @@ class ReportCard extends StatelessWidget {
     this.trailing,
     this.onTap,
     this.compact = false,
+    this.addressOverride,
   });
 
   final WasteReport report;
   final Widget? trailing;
   final VoidCallback? onTap;
   final bool compact;
+  final String? addressOverride;
 
   String _translateCategory(String name) {
     switch (name.toUpperCase()) {
@@ -422,12 +460,16 @@ class ReportCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final address = formatAddressLine(
-      report.addressNumber,
-      report.addressDetail,
-    );
+    final address = addressOverride?.trim().isNotEmpty == true
+        ? addressOverride!.trim()
+        : formatAddressLine(report.addressNumber, report.addressDetail);
     final category = _translateCategory(report.categoryName);
     final priority = report.priorityScore ?? 0;
+    final completed = report.status.toUpperCase() == 'COLLECTED';
+    final displayedWeight = completed ? report.weight : report.estimatedWeight;
+    final weightText = displayedWeight == null
+        ? (completed ? 'Chưa có số cân' : 'Chưa có ước tính')
+        : '${displayedWeight.toStringAsFixed(1)} kg ${completed ? 'thực tế' : 'ước tính'}';
 
     return Semantics(
       button: onTap != null,
@@ -528,7 +570,7 @@ class ReportCard extends StatelessWidget {
                                     ),
                                     const SizedBox(width: 4),
                                     Text(
-                                      'Ưu tiên $priority',
+                                      'Phù hợp $priority/3',
                                       style: const TextStyle(
                                         color: Colors.white,
                                         fontWeight: FontWeight.w800,
@@ -612,8 +654,7 @@ class ReportCard extends StatelessWidget {
                         children: [
                           _ReportMeta(
                             icon: Icons.scale_rounded,
-                            text:
-                                '${report.weight?.toStringAsFixed(1) ?? '—'} kg',
+                            text: weightText,
                           ),
                           _ReportMeta(
                             icon: Icons.schedule_rounded,
@@ -986,13 +1027,15 @@ class AppLoadingView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final disableAnimations =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           TweenAnimationBuilder<double>(
-            tween: Tween(begin: 0.92, end: 1),
-            duration: AppMotion.slow,
+            tween: Tween(begin: disableAnimations ? 1 : 0.92, end: 1),
+            duration: disableAnimations ? Duration.zero : AppMotion.slow,
             curve: Curves.easeOutBack,
             builder: (_, scale, child) =>
                 Transform.scale(scale: scale, child: child),
@@ -1007,12 +1050,13 @@ class AppLoadingView extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          const SizedBox(
-            width: 120,
-            child: LinearProgressIndicator(
-              borderRadius: BorderRadius.all(Radius.circular(99)),
+          if (!disableAnimations)
+            const SizedBox(
+              width: 120,
+              child: LinearProgressIndicator(
+                borderRadius: BorderRadius.all(Radius.circular(99)),
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -1097,6 +1141,7 @@ class _AppLazyIndexedStackState extends State<AppLazyIndexedStack> {
   Widget build(BuildContext context) {
     return IndexedStack(
       index: widget.index,
+      sizing: StackFit.expand,
       children: [
         for (var index = 0; index < widget.children.length; index++)
           if (_visited.contains(index))

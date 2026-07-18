@@ -21,6 +21,9 @@ class _EnterpriseStatisticsViewState extends State<EnterpriseStatisticsView> {
   String? _endDate;
   bool _loading = true;
   bool _searching = false;
+  bool _hasLoaded = false;
+  String? _error;
+  int _searchRequest = 0;
 
   @override
   void initState() {
@@ -40,22 +43,24 @@ class _EnterpriseStatisticsViewState extends State<EnterpriseStatisticsView> {
         _categories = results[0] as List<WasteCategory>;
         _areas = results[1] as AreaDirectory;
       });
-      await _search();
+      await _search(showErrors: false);
     } catch (e) {
       if (!mounted) return;
+      setState(() => _error = friendlyError(e));
       showErrorSnack(context, e);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
 
-  Future<void> _search() async {
+  Future<void> _search({bool showErrors = true}) async {
     if (_startDate != null &&
         _endDate != null &&
         _startDate!.compareTo(_endDate!) > 0) {
       showSnack(context, 'Ngày bắt đầu phải trước ngày kết thúc');
       return;
     }
+    final request = ++_searchRequest;
     setState(() => _searching = true);
     try {
       final stats = await widget.controller.api.getWasteStatistics(
@@ -65,13 +70,20 @@ class _EnterpriseStatisticsViewState extends State<EnterpriseStatisticsView> {
         startDate: _startDate,
         endDate: _endDate,
       );
-      if (!mounted) return;
-      setState(() => _stats = stats);
+      if (!mounted || request != _searchRequest) return;
+      setState(() {
+        _stats = stats;
+        _hasLoaded = true;
+        _error = null;
+      });
     } catch (e) {
-      if (!mounted) return;
-      showErrorSnack(context, e);
+      if (!mounted || request != _searchRequest) return;
+      setState(() => _error = friendlyError(e));
+      if (showErrors) showErrorSnack(context, e);
     } finally {
-      if (mounted) setState(() => _searching = false);
+      if (mounted && request == _searchRequest) {
+        setState(() => _searching = false);
+      }
     }
   }
 
@@ -80,7 +92,7 @@ class _EnterpriseStatisticsViewState extends State<EnterpriseStatisticsView> {
     final date = await showDatePicker(
       context: context,
       firstDate: DateTime(2020),
-      lastDate: DateTime(2035),
+      lastDate: DateTime.now(),
       initialDate: DateTime.tryParse(currentValue ?? '') ?? DateTime.now(),
     );
     if (date == null) return;
@@ -107,8 +119,15 @@ class _EnterpriseStatisticsViewState extends State<EnterpriseStatisticsView> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
+    if (_loading && !_hasLoaded) {
       return const AppLoadingView(label: 'Đang đọc dữ liệu vận hành…');
+    }
+    if (!_hasLoaded) {
+      return _EnterpriseDataErrorView(
+        title: 'Chưa tải được dữ liệu phân tích',
+        message: _error ?? 'Vui lòng kiểm tra kết nối và thử lại.',
+        onRetry: _loadInitial,
+      );
     }
 
     final totalReports = _stats.fold<int>(
@@ -156,6 +175,13 @@ class _EnterpriseStatisticsViewState extends State<EnterpriseStatisticsView> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      if (_error case final error?) ...[
+                        _EnterpriseRefreshError(
+                          message: error,
+                          onRetry: _search,
+                        ),
+                        const SizedBox(height: 14),
+                      ],
                       SectionTitle(
                         'Bức tranh vận hành',
                         eyebrow: 'DỮ LIỆU CÓ Ý NGHĨA',
@@ -457,7 +483,11 @@ class _EnterpriseStatisticsViewState extends State<EnterpriseStatisticsView> {
       physics: const NeverScrollableScrollPhysics(),
       itemCount: metrics.length,
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: width >= 820 ? 4 : 2,
+        crossAxisCount: width >= 820
+            ? 4
+            : width < 360 || MediaQuery.textScalerOf(context).scale(1) > 1.35
+            ? 1
+            : 2,
         mainAxisExtent: 112,
         crossAxisSpacing: 12,
         mainAxisSpacing: 12,

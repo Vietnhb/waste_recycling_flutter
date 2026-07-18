@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
@@ -53,6 +54,27 @@ class ApiClient {
     return _decode(response);
   }
 
+  Future<dynamic> postImage(
+    String endpoint, {
+    required Uint8List bytes,
+    required String filename,
+    Map<String, String> fields = const {},
+    Map<String, String> headers = const {},
+  }) async {
+    final request = http.MultipartRequest('POST', _uri(endpoint));
+    request.headers['Accept'] = 'application/json';
+    if (token != null && token!.isNotEmpty) {
+      request.headers['Authorization'] = 'Bearer $token';
+    }
+    request.headers.addAll(headers);
+    request.fields.addAll(fields);
+    request.files.add(
+      http.MultipartFile.fromBytes('image', bytes, filename: filename),
+    );
+    final streamed = await request.send();
+    return _decode(await http.Response.fromStream(streamed));
+  }
+
   Future<dynamic> put(
     String endpoint, [
     Object? body,
@@ -85,7 +107,14 @@ class ApiClient {
       final message = body is Map
           ? asString(body['message'], 'Có lỗi xảy ra từ server')
           : (text.isEmpty ? 'HTTP ${response.statusCode}' : text);
-      throw ApiException(message, response.statusCode);
+      final code = body is Map ? asString(body['code']).trim() : '';
+      final retryable = body is Map && body['retryable'] == true;
+      throw ApiException(
+        message,
+        response.statusCode,
+        code.isEmpty ? null : code,
+        retryable,
+      );
     }
     return body;
   }

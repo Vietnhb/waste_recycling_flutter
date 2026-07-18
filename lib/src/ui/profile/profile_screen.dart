@@ -472,6 +472,7 @@ class _PersonalDetailsCard extends StatelessWidget {
           const SizedBox(height: AppSpacing.formGap),
           TextField(
             controller: emailController,
+            readOnly: true,
             keyboardType: TextInputType.emailAddress,
             textInputAction: TextInputAction.done,
             autofillHints: const [AutofillHints.email],
@@ -480,6 +481,8 @@ class _PersonalDetailsCard extends StatelessWidget {
             decoration: inputDecoration(
               'Email',
               icon: Icons.alternate_email_rounded,
+              helperText:
+                  'Liên hệ quản trị viên nếu cần thay đổi email đăng nhập',
             ),
           ),
           const SizedBox(height: 18),

@@ -4,7 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../controllers/app_controller.dart';
+import '../../core/api_exception.dart';
+import '../../core/error_helpers.dart';
 import '../../core/json_helpers.dart';
+import '../../features/enterprise/presentation/enterprise_history_view.dart';
+import '../../features/operations/domain/operation_workflow.dart';
 import '../../models/models.dart';
 import '../../services/area_directory.dart';
 import '../profile/profile_screen.dart';
@@ -12,8 +16,10 @@ import '../shared/widgets.dart';
 
 part 'accepted_reports_view.dart';
 part 'collector_management_view.dart';
+part 'enterprise_home_view.dart';
 part 'enterprise_profile_view.dart';
 part 'enterprise_statistics_view.dart';
+part 'enterprise_workflow.dart';
 part 'pending_reports_view.dart';
 part 'point_rules_view.dart';
 
@@ -28,8 +34,24 @@ class EnterpriseScreen extends StatefulWidget {
 
 class _EnterpriseScreenState extends State<EnterpriseScreen> {
   int _selectedIndex = 0;
+  final Set<int> _visitedDestinations = {0};
+  final _homeKey = GlobalKey<_EnterpriseHomeViewState>();
+  final _pendingKey = GlobalKey<_PendingReportsViewState>();
+  final _dispatchKey = GlobalKey<_AcceptedReportsViewState>();
+  final _teamKey = GlobalKey<_CollectorManagementViewState>();
+  final _statisticsKey = GlobalKey<_EnterpriseStatisticsViewState>();
+  final _rulesKey = GlobalKey<_PointRulesViewState>();
+  final _enterpriseProfileKey = GlobalKey<_EnterpriseProfileViewState>();
+  final _historyKey = GlobalKey<EnterpriseHistoryViewState>();
 
   static const _destinations = [
+    (
+      icon: Icons.space_dashboard_outlined,
+      selectedIcon: Icons.space_dashboard_rounded,
+      label: 'Trang chủ',
+      title: 'Tổng quan hôm nay',
+      subtitle: 'Nắm nhịp vận hành và xử lý những việc quan trọng nhất',
+    ),
     (
       icon: Icons.inbox_outlined,
       selectedIcon: Icons.inbox_rounded,
@@ -72,19 +94,81 @@ class _EnterpriseScreenState extends State<EnterpriseScreen> {
       title: 'Hồ sơ doanh nghiệp',
       subtitle: 'Cập nhật năng lực, khu vực và loại rác tiếp nhận',
     ),
+    (
+      icon: Icons.history_rounded,
+      selectedIcon: Icons.fact_check_rounded,
+      label: 'Lịch sử',
+      title: 'Lịch sử hoàn tất',
+      subtitle: 'Tra cứu bằng chứng, khối lượng và người thực hiện từng chuyến',
+    ),
   ];
 
   late final List<Widget> _pages = [
-    PendingReportsView(controller: widget.controller),
-    AcceptedReportsView(controller: widget.controller),
-    CollectorManagementView(controller: widget.controller),
-    EnterpriseStatisticsView(controller: widget.controller),
-    PointRulesView(controller: widget.controller),
-    EnterpriseProfileView(controller: widget.controller),
+    EnterpriseHomeView(
+      key: _homeKey,
+      controller: widget.controller,
+      onOpenDestination: _selectPage,
+    ),
+    PendingReportsView(key: _pendingKey, controller: widget.controller),
+    AcceptedReportsView(key: _dispatchKey, controller: widget.controller),
+    CollectorManagementView(key: _teamKey, controller: widget.controller),
+    EnterpriseStatisticsView(
+      key: _statisticsKey,
+      controller: widget.controller,
+    ),
+    PointRulesView(key: _rulesKey, controller: widget.controller),
+    EnterpriseProfileView(
+      key: _enterpriseProfileKey,
+      controller: widget.controller,
+    ),
+    EnterpriseHistoryView(key: _historyKey, controller: widget.controller),
   ];
 
   void _selectPage(int index) {
-    setState(() => _selectedIndex = index);
+    final shouldRefresh = _visitedDestinations.contains(index);
+    _visitedDestinations.add(index);
+    if (_selectedIndex != index) setState(() => _selectedIndex = index);
+    if (!shouldRefresh) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _selectedIndex != index) return;
+      switch (index) {
+        case 0:
+          _homeKey.currentState?._load();
+          break;
+        case 1:
+          _pendingKey.currentState?._load(
+            showLoading: false,
+            showErrors: false,
+          );
+          break;
+        case 2:
+          _dispatchKey.currentState?._load(
+            showLoading: false,
+            showErrors: false,
+          );
+          break;
+        case 3:
+          _teamKey.currentState?._load(showLoading: false, showErrors: false);
+          break;
+        case 4:
+          _statisticsKey.currentState?._search(showErrors: false);
+          break;
+        case 5:
+          _rulesKey.currentState?._load(showLoading: false, showErrors: false);
+          break;
+        case 6:
+          // Preserve unsaved form edits when the user returns to this tab.
+          break;
+        case 7:
+          _historyKey.currentState?.load(showLoading: false, showErrors: false);
+          break;
+      }
+    });
+  }
+
+  void _handlePopInvoked(bool didPop, Object? result) {
+    if (didPop || _selectedIndex == 0) return;
+    _selectPage(0);
   }
 
   Future<void> _openProfile() async {
@@ -100,6 +184,7 @@ class _EnterpriseScreenState extends State<EnterpriseScreen> {
     final selected = await showModalBottomSheet<int>(
       context: context,
       useSafeArea: true,
+      isScrollControlled: true,
       showDragHandle: true,
       builder: (context) => _EnterpriseMoreSheet(
         selectedIndex: _selectedIndex,
@@ -121,96 +206,99 @@ class _EnterpriseScreenState extends State<EnterpriseScreen> {
     final extendRail = width >= 1280;
     final destination = _destinations[_selectedIndex];
 
-    return Scaffold(
-      body: SafeArea(
-        bottom: false,
-        child: Row(
-          children: [
-            if (showRail)
-              _EnterpriseNavigationRail(
-                selectedIndex: _selectedIndex,
-                extended: extendRail,
-                user: widget.controller.user,
-                onSelected: _selectPage,
-                onProfile: _openProfile,
-                onLogout: () => logoutToHome(context, widget.controller.logout),
-              ),
-            Expanded(
-              child: Column(
-                children: [
-                  _EnterpriseTopBar(
-                    icon: destination.selectedIcon,
-                    title: destination.title,
-                    subtitle: destination.subtitle,
-                    user: widget.controller.user,
-                    onProfile: _openProfile,
-                    onLogout: () =>
-                        logoutToHome(context, widget.controller.logout),
-                  ),
-                  const Divider(),
-                  Expanded(
-                    child: AppLazyIndexedStack(
-                      index: _selectedIndex,
-                      children: _pages,
+    return PopScope<Object?>(
+      canPop: _selectedIndex == 0,
+      onPopInvokedWithResult: _handlePopInvoked,
+      child: Scaffold(
+        body: SafeArea(
+          bottom: false,
+          child: Row(
+            children: [
+              if (showRail)
+                _EnterpriseNavigationRail(
+                  selectedIndex: _selectedIndex,
+                  extended: extendRail,
+                  user: widget.controller.user,
+                  onSelected: _selectPage,
+                  onProfile: _openProfile,
+                  onLogout: () =>
+                      logoutToHome(context, widget.controller.logout),
+                ),
+              Expanded(
+                child: Column(
+                  children: [
+                    _EnterpriseTopBar(
+                      icon: destination.selectedIcon,
+                      title: destination.title,
+                      subtitle: destination.subtitle,
+                      user: widget.controller.user,
+                      onProfile: _openProfile,
+                      onLogout: () =>
+                          logoutToHome(context, widget.controller.logout),
                     ),
-                  ),
-                ],
+                    const Divider(),
+                    Expanded(
+                      child: AppLazyIndexedStack(
+                        index: _selectedIndex,
+                        children: _pages,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-      ),
-      bottomNavigationBar: showRail
-          ? null
-          : SafeArea(
-              top: false,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: AppPalette.surface,
-                  border: Border(
-                    top: BorderSide(
-                      color: AppPalette.line.withValues(alpha: 0.8),
+        bottomNavigationBar: showRail
+            ? null
+            : SafeArea(
+                top: false,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: AppPalette.surface,
+                    border: Border(
+                      top: BorderSide(
+                        color: AppPalette.line.withValues(alpha: 0.8),
+                      ),
                     ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppPalette.night.withValues(alpha: 0.08),
+                        blurRadius: 24,
+                        offset: const Offset(0, -8),
+                      ),
+                    ],
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppPalette.night.withValues(alpha: 0.08),
-                      blurRadius: 24,
-                      offset: const Offset(0, -8),
-                    ),
-                  ],
-                ),
-                child: NavigationBar(
-                  selectedIndex: _selectedIndex < 4 ? _selectedIndex : 4,
-                  onDestinationSelected: (index) {
-                    if (index < 4) {
-                      _selectPage(index);
-                    } else {
-                      _showMoreDestinations();
-                    }
-                  },
-                  destinations: [
-                    for (final item in _destinations.take(4))
+                  child: NavigationBar(
+                    selectedIndex: _selectedIndex < 4 ? _selectedIndex : 4,
+                    onDestinationSelected: (index) {
+                      if (index < 4) {
+                        _selectPage(index);
+                      } else {
+                        _showMoreDestinations();
+                      }
+                    },
+                    destinations: [
+                      for (final item in _destinations.take(4))
+                        NavigationDestination(
+                          icon: Icon(item.icon),
+                          selectedIcon: Icon(item.selectedIcon),
+                          label: item.label,
+                        ),
                       NavigationDestination(
-                        icon: Icon(item.icon),
-                        selectedIcon: Icon(item.selectedIcon),
-                        label: item.label,
+                        icon: const Icon(Icons.grid_view_outlined),
+                        selectedIcon: Icon(
+                          _selectedIndex >= 4
+                              ? _destinations[_selectedIndex].selectedIcon
+                              : Icons.grid_view_rounded,
+                        ),
+                        label: 'Thêm',
                       ),
-                    NavigationDestination(
-                      icon: const Icon(Icons.grid_view_outlined),
-                      selectedIcon: Icon(
-                        _selectedIndex == 4
-                            ? _destinations[4].selectedIcon
-                            : _selectedIndex == 5
-                            ? _destinations[5].selectedIcon
-                            : Icons.grid_view_rounded,
-                      ),
-                      label: 'Thêm',
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
+      ),
     );
   }
 }
@@ -444,11 +532,10 @@ class _EnterpriseMoreSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return FractionallySizedBox(
+      heightFactor: 0.86,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(18, 0, 18, 24),
         children: [
           const AppScreenHeader(
             title: 'Không gian doanh nghiệp',
@@ -456,7 +543,11 @@ class _EnterpriseMoreSheet extends StatelessWidget {
             leading: AppBrandMark(size: 44),
           ),
           const SizedBox(height: 4),
-          for (final index in [4, 5])
+          for (
+            var index = 4;
+            index < _EnterpriseScreenState._destinations.length;
+            index++
+          )
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: Material(

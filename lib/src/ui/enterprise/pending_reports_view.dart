@@ -12,9 +12,13 @@ class PendingReportsView extends StatefulWidget {
 class _PendingReportsViewState extends State<PendingReportsView> {
   List<WasteReport> _reports = const [];
   List<PointRule> _rules = const [];
+  AreaDirectory? _areas;
   final Map<int, int> _selectedRules = {};
   final Set<int> _acceptingReports = {};
   bool _loading = true;
+  bool _hasLoaded = false;
+  String? _error;
+  int _loadRequest = 0;
   StreamSubscription<JsonMap>? _realtimeSub;
 
   @override
@@ -26,7 +30,7 @@ class _PendingReportsViewState extends State<PendingReportsView> {
       if (type == 'REPORT_CREATED' ||
           type == 'REPORT_ACCEPTED' ||
           type == 'REPORT_REJECTED') {
-        _load();
+        _load(showLoading: false, showErrors: false);
       }
     });
   }
@@ -37,25 +41,39 @@ class _PendingReportsViewState extends State<PendingReportsView> {
     super.dispose();
   }
 
-  Future<void> _load() async {
-    setState(() => _loading = true);
+  Future<bool> _load({bool showLoading = true, bool showErrors = true}) async {
+    final request = ++_loadRequest;
+    if (showLoading && mounted) setState(() => _loading = true);
     try {
       final results = await Future.wait([
         widget.controller.api.getPendingReports(),
         widget.controller.api.getPointRules(),
+        AreaDirectory.load(api: widget.controller.api),
       ]);
-      if (!mounted) return;
+      if (!mounted || request != _loadRequest) return false;
       setState(() {
-        _reports = results[0] as List<WasteReport>;
+        _reports = enterpriseSortPending(results[0] as List<WasteReport>);
         _rules = (results[1] as List<PointRule>)
             .where((rule) => rule.isActive)
             .toList();
+        _areas = results[2] as AreaDirectory;
+        final visibleReportIds = _reports.map((report) => report.id).toSet();
+        _selectedRules.removeWhere(
+          (reportId, _) => !visibleReportIds.contains(reportId),
+        );
+        _hasLoaded = true;
+        _error = null;
       });
+      return true;
     } catch (e) {
-      if (!mounted) return;
-      showErrorSnack(context, e);
+      if (!mounted || request != _loadRequest) return false;
+      setState(() => _error = friendlyError(e));
+      if (showErrors) showErrorSnack(context, e);
+      return false;
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && request == _loadRequest && showLoading) {
+        setState(() => _loading = false);
+      }
     }
   }
 
@@ -70,6 +88,7 @@ class _PendingReportsViewState extends State<PendingReportsView> {
   }
 
   Future<void> _accept(WasteReport report) async {
+    if (_acceptingReports.contains(report.id)) return;
     final ruleId = _selectedRules[report.id];
     if (ruleId == null) {
       showSnack(context, 'Vui lòng chọn quy tắc điểm');
@@ -79,9 +98,18 @@ class _PendingReportsViewState extends State<PendingReportsView> {
     try {
       await widget.controller.api.acceptReport(report.id, ruleId);
       if (!mounted) return;
-      showSnack(context, 'Đã tiếp nhận yêu cầu thu gom');
-      _selectedRules.remove(report.id);
-      await _load();
+      setState(() {
+        _reports = _reports.where((item) => item.id != report.id).toList();
+        _selectedRules.remove(report.id);
+      });
+      final refreshed = await _load(showLoading: false, showErrors: false);
+      if (!mounted) return;
+      showSnack(
+        context,
+        refreshed
+            ? 'Đã tiếp nhận yêu cầu thu gom #${report.id}'
+            : 'Đã tiếp nhận yêu cầu #${report.id}. Danh sách sẽ đồng bộ khi tải lại.',
+      );
     } catch (e) {
       if (!mounted) return;
       showErrorSnack(context, e);
@@ -94,8 +122,17 @@ class _PendingReportsViewState extends State<PendingReportsView> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
+    if (_loading && !_hasLoaded) {
       return const AppLoadingView(label: 'Đang tìm yêu cầu mới quanh bạn…');
+    }
+    if (!_hasLoaded) {
+      return _EnterpriseDataErrorView(
+        title: 'Chưa tải được hàng chờ',
+        message: _error ?? 'Vui lòng kiểm tra kết nối và thử lại.',
+        onRetry: () async {
+          await _load();
+        },
+      );
     }
 
     final coveredReports = _reports
@@ -105,8 +142,8 @@ class _PendingReportsViewState extends State<PendingReportsView> {
         .map((report) => report.categoryId)
         .toSet()
         .length;
-    final priorityReports = _reports
-        .where((report) => (report.priorityScore ?? 0) > 0)
+    final fullyMatchedReports = _reports
+        .where((report) => enterpriseCapabilityFit(report) == 3)
         .length;
 
     return LayoutBuilder(
@@ -129,11 +166,15 @@ class _PendingReportsViewState extends State<PendingReportsView> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      if (_error case final error?) ...[
+                        _EnterpriseRefreshError(message: error, onRetry: _load),
+                        const SizedBox(height: 14),
+                      ],
                       SectionTitle(
                         'Yêu cầu quanh vùng',
                         eyebrow: 'TIẾP NHẬN THÔNG MINH',
                         subtitle:
-                            'Đọc nhanh vật liệu, vị trí và mức ưu tiên trước khi đưa chuyến vào luồng điều phối.',
+                            'Đối chiếu vật liệu, khu vực phục vụ và quy tắc điểm trước khi cam kết nhận chuyến.',
                         action: IconButton(
                           tooltip: 'Tải lại',
                           onPressed: _load,
@@ -144,7 +185,7 @@ class _PendingReportsViewState extends State<PendingReportsView> {
                         constraints.maxWidth,
                         coveredReports: coveredReports,
                         categoryCount: categoryCount,
-                        priorityReports: priorityReports,
+                        fullyMatchedReports: fullyMatchedReports,
                       ),
                       const SizedBox(height: 18),
                       AppSurface(
@@ -213,7 +254,7 @@ class _PendingReportsViewState extends State<PendingReportsView> {
                         'Hàng chờ mới',
                         eyebrow: 'CẦN QUYẾT ĐỊNH',
                         subtitle:
-                            '${_reports.length} yêu cầu đang chờ doanh nghiệp tiếp nhận',
+                            '${_reports.length} yêu cầu khả dụng · xếp theo độ phù hợp rồi thời gian chờ',
                       ),
                       if (_reports.isEmpty)
                         const EmptyState(
@@ -237,6 +278,7 @@ class _PendingReportsViewState extends State<PendingReportsView> {
                                     width: cardWidth,
                                     child: ReportCard(
                                       report: report,
+                                      addressOverride: _marketplaceArea(report),
                                       trailing: _buildAcceptancePanel(report),
                                     ),
                                   ),
@@ -259,7 +301,7 @@ class _PendingReportsViewState extends State<PendingReportsView> {
     double width, {
     required int coveredReports,
     required int categoryCount,
-    required int priorityReports,
+    required int fullyMatchedReports,
   }) {
     final metrics = [
       (
@@ -281,9 +323,9 @@ class _PendingReportsViewState extends State<PendingReportsView> {
         color: AppPalette.sky,
       ),
       (
-        value: '$priorityReports',
-        label: 'Được ưu tiên',
-        icon: Icons.bolt_rounded,
+        value: '$fullyMatchedReports',
+        label: 'Khớp hoàn toàn',
+        icon: Icons.task_alt_rounded,
         color: AppPalette.amber,
       ),
     ];
@@ -292,7 +334,11 @@ class _PendingReportsViewState extends State<PendingReportsView> {
       physics: const NeverScrollableScrollPhysics(),
       itemCount: metrics.length,
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: width >= 820 ? 4 : 2,
+        crossAxisCount: width >= 820
+            ? 4
+            : width < 360 || MediaQuery.textScalerOf(context).scale(1) > 1.35
+            ? 1
+            : 2,
         mainAxisExtent: 112,
         crossAxisSpacing: 12,
         mainAxisSpacing: 12,
@@ -312,9 +358,80 @@ class _PendingReportsViewState extends State<PendingReportsView> {
   Widget _buildAcceptancePanel(WasteReport report) {
     final rules = _applicableRules(report);
     final accepting = _acceptingReports.contains(report.id);
+    final selectedRule = validDropdownValue(
+      _selectedRules[report.id],
+      rules.map((rule) => rule.id),
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: AppPalette.sky.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(AppRadii.md),
+          ),
+          child: const Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.privacy_tip_outlined, size: 18, color: AppPalette.sky),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Đang hiển thị khu vực gần đúng. Người gửi, số điện thoại và vị trí chính xác chỉ mở sau khi doanh nghiệp tiếp nhận.',
+                  style: TextStyle(
+                    color: AppPalette.ink,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    height: 1.35,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: enterpriseCapabilityFit(report) == 3
+                ? AppPalette.mint
+                : AppPalette.surfaceMuted,
+            borderRadius: BorderRadius.circular(AppRadii.md),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                enterpriseCapabilityFit(report) == 3
+                    ? Icons.task_alt_rounded
+                    : Icons.tune_rounded,
+                size: 18,
+                color: AppPalette.primaryDark,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  enterpriseCapabilityFitLabel(report),
+                  style: const TextStyle(
+                    color: AppPalette.primaryDark,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              Text(
+                enterpriseElapsedLabel(report.createdAt),
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: AppPalette.muted,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
         Row(
           children: [
             Container(
@@ -395,7 +512,8 @@ class _PendingReportsViewState extends State<PendingReportsView> {
         SizedBox(
           width: double.infinity,
           child: FilledButton.icon(
-            onPressed: rules.isEmpty || accepting
+            key: ValueKey('accept-report-${report.id}'),
+            onPressed: selectedRule == null || accepting
                 ? null
                 : () => _accept(report),
             icon: accepting
@@ -408,10 +526,27 @@ class _PendingReportsViewState extends State<PendingReportsView> {
                     ),
                   )
                 : const Icon(Icons.check_circle_rounded),
-            label: Text(accepting ? 'Đang tiếp nhận…' : 'Tiếp nhận yêu cầu'),
+            label: Text(
+              accepting
+                  ? 'Đang tiếp nhận…'
+                  : selectedRule == null
+                  ? 'Chọn quy tắc để tiếp nhận'
+                  : 'Tiếp nhận và chuyển sang điều phối',
+            ),
           ),
         ),
       ],
     );
+  }
+
+  String _marketplaceArea(WasteReport report) {
+    final areas = _areas;
+    if (areas == null) return 'Khu vực mã ${report.provinceCode}';
+    final province = areas.provinceByCode(report.provinceCode);
+    if (province == null) return 'Khu vực mã ${report.provinceCode}';
+    final ward = areas.wardByCode(report.provinceCode, report.wardCode);
+    return ward == null
+        ? province.fullName
+        : '${ward.fullName}, ${province.fullName}';
   }
 }

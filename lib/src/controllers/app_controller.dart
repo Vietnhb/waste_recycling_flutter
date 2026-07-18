@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/api_client.dart';
+import '../core/api_exception.dart';
 import '../core/json_helpers.dart';
 import '../core/platform_config.dart';
 import '../models/models.dart';
@@ -12,6 +13,7 @@ class AppController extends ChangeNotifier {
   String baseUrl = defaultApiBaseUrl();
   String? token;
   User? user;
+  Object? sessionRestoreError;
   bool booting = true;
   final realtime = RealtimeService();
 
@@ -21,23 +23,22 @@ class AppController extends ChangeNotifier {
 
   Future<void> init() async {
     _prefs = await SharedPreferences.getInstance();
-    baseUrl = _prefs?.getString('baseUrl') ?? defaultApiBaseUrl();
+    baseUrl = kDebugMode
+        ? normalizeApiBaseUrl(
+            _prefs?.getString('baseUrl') ?? defaultApiBaseUrl(),
+          )
+        : defaultApiBaseUrl();
     token = _prefs?.getString('token');
     if (token != null) {
-      try {
-        user = await api.getMe();
-        realtime.connect(baseUrl: baseUrl, token: token!);
-      } catch (_) {
-        token = null;
-        await _prefs?.remove('token');
-      }
+      await _restoreSession();
     }
     booting = false;
     notifyListeners();
   }
 
   Future<void> setBaseUrl(String value) async {
-    final normalized = value.trim().replaceAll(RegExp(r'/+$'), '');
+    if (!kDebugMode) return;
+    final normalized = normalizeApiBaseUrl(value);
     if (normalized.isEmpty) return;
     baseUrl = normalized;
     await _prefs?.setString('baseUrl', baseUrl);
@@ -53,6 +54,7 @@ class AppController extends ChangeNotifier {
     });
     token = asString(data['token']);
     user = User.fromJson(Map<String, dynamic>.from(data['user']));
+    sessionRestoreError = null;
     await _prefs?.setString('token', token!);
     realtime.connect(baseUrl: baseUrl, token: token!);
     notifyListeners();
@@ -67,6 +69,7 @@ class AppController extends ChangeNotifier {
       role: role,
       points: 100,
     );
+    sessionRestoreError = null;
     notifyListeners();
   }
 
@@ -79,6 +82,16 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> retrySessionRestore() async {
+    if (token == null || booting) return;
+    booting = true;
+    sessionRestoreError = null;
+    notifyListeners();
+    await _restoreSession();
+    booting = false;
+    notifyListeners();
+  }
+
   Future<void> updateMe(String fullName, String email) async {
     user = await api.updateMe(fullName, email);
     notifyListeners();
@@ -87,9 +100,30 @@ class AppController extends ChangeNotifier {
   Future<void> logout() async {
     token = null;
     user = null;
+    sessionRestoreError = null;
     realtime.disconnect();
     await _prefs?.remove('token');
     notifyListeners();
+  }
+
+  Future<void> _restoreSession() async {
+    try {
+      user = await api.getMe();
+      sessionRestoreError = null;
+      realtime.connect(baseUrl: baseUrl, token: token!);
+    } catch (error) {
+      user = null;
+      final unauthorized =
+          error is ApiException &&
+          (error.statusCode == 401 || error.statusCode == 403);
+      if (unauthorized) {
+        token = null;
+        sessionRestoreError = null;
+        await _prefs?.remove('token');
+      } else {
+        sessionRestoreError = error;
+      }
+    }
   }
 
   @override

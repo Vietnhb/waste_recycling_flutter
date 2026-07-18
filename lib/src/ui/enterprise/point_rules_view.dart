@@ -23,6 +23,9 @@ class _PointRulesViewState extends State<PointRulesView> {
   int? _editingId;
   bool _loading = true;
   bool _saving = false;
+  bool _hasLoaded = false;
+  String? _error;
+  int _loadRequest = 0;
 
   @override
   void initState() {
@@ -41,23 +44,29 @@ class _PointRulesViewState extends State<PointRulesView> {
     super.dispose();
   }
 
-  Future<void> _load() async {
-    setState(() => _loading = true);
+  Future<void> _load({bool showLoading = true, bool showErrors = true}) async {
+    final request = ++_loadRequest;
+    if (showLoading && mounted) setState(() => _loading = true);
     try {
       final results = await Future.wait([
         widget.controller.api.getPointRules(),
         widget.controller.api.getCategories(),
       ]);
-      if (!mounted) return;
+      if (!mounted || request != _loadRequest) return;
       setState(() {
         _rules = results[0] as List<PointRule>;
         _categories = results[1] as List<WasteCategory>;
+        _hasLoaded = true;
+        _error = null;
       });
     } catch (e) {
-      if (!mounted) return;
-      showErrorSnack(context, e);
+      if (!mounted || request != _loadRequest) return;
+      setState(() => _error = friendlyError(e));
+      if (showErrors) showErrorSnack(context, e);
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && request == _loadRequest && showLoading) {
+        setState(() => _loading = false);
+      }
     }
   }
 
@@ -74,6 +83,13 @@ class _PointRulesViewState extends State<PointRulesView> {
   }
 
   void _edit(PointRule rule) {
+    if (rule.inUse) {
+      showSnack(
+        context,
+        'Quy tắc đã cam kết cho một chuyến. Hãy tạo bản sao để đổi mức điểm.',
+      );
+      return;
+    }
     _nameCtrl.text = rule.ruleName;
     _descCtrl.text = rule.description;
     _baseCtrl.text = rule.basePoints.toString();
@@ -96,22 +112,62 @@ class _PointRulesViewState extends State<PointRulesView> {
     });
   }
 
+  void _duplicate(PointRule rule) {
+    _nameCtrl.text = '${rule.ruleName} · Bản mới';
+    _descCtrl.text = rule.description;
+    _baseCtrl.text = rule.basePoints.toString();
+    _perKgCtrl.text = rule.pointsPerKg?.toString() ?? '';
+    _bonusCtrl.text = rule.correctClassificationBonus?.toString() ?? '';
+    setState(() {
+      _editingId = null;
+      _categoryIds
+        ..clear()
+        ..addAll(rule.categoryIds);
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          0,
+          duration: AppMotion.standard,
+          curve: AppMotion.curve,
+        );
+      }
+    });
+  }
+
   Future<void> _save() async {
+    if (_saving) return;
     if (_nameCtrl.text.trim().isEmpty) {
       showSnack(context, 'Vui lòng nhập tên quy tắc');
+      return;
+    }
+    final basePoints = int.tryParse(_baseCtrl.text.trim());
+    final pointsPerKg = _perKgCtrl.text.trim().isEmpty
+        ? null
+        : double.tryParse(_perKgCtrl.text.trim());
+    final bonus = _bonusCtrl.text.trim().isEmpty
+        ? null
+        : int.tryParse(_bonusCtrl.text.trim());
+    if (basePoints == null || basePoints < 0) {
+      showSnack(context, 'Điểm cơ bản phải là số từ 0 trở lên');
+      return;
+    }
+    if (_perKgCtrl.text.trim().isNotEmpty &&
+        (pointsPerKg == null || pointsPerKg < 0)) {
+      showSnack(context, 'Điểm theo kg phải là số từ 0 trở lên');
+      return;
+    }
+    if (_bonusCtrl.text.trim().isNotEmpty && (bonus == null || bonus < 0)) {
+      showSnack(context, 'Điểm thưởng phải là số nguyên từ 0 trở lên');
       return;
     }
     setState(() => _saving = true);
     final data = {
       'ruleName': _nameCtrl.text.trim(),
       'description': _descCtrl.text.trim(),
-      'basePoints': asInt(_baseCtrl.text),
-      'pointsPerKg': _perKgCtrl.text.trim().isEmpty
-          ? null
-          : asDouble(_perKgCtrl.text),
-      'correctClassificationBonus': _bonusCtrl.text.trim().isEmpty
-          ? null
-          : asInt(_bonusCtrl.text),
+      'basePoints': basePoints,
+      'pointsPerKg': pointsPerKg,
+      'correctClassificationBonus': bonus,
       'categoryIds': _categoryIds.toList(),
     };
     try {
@@ -126,7 +182,7 @@ class _PointRulesViewState extends State<PointRulesView> {
         _editingId == null ? 'Đã tạo quy tắc điểm' : 'Đã cập nhật quy tắc',
       );
       _reset();
-      await _load();
+      await _load(showLoading: false, showErrors: false);
     } catch (e) {
       if (!mounted) return;
       showErrorSnack(context, e);
@@ -136,10 +192,11 @@ class _PointRulesViewState extends State<PointRulesView> {
   }
 
   Future<void> _toggle(PointRule rule) async {
+    if (_busyRuleIds.contains(rule.id)) return;
     setState(() => _busyRuleIds.add(rule.id));
     try {
       await widget.controller.api.togglePointRule(rule.id);
-      await _load();
+      await _load(showLoading: false, showErrors: false);
     } catch (e) {
       if (!mounted) return;
       showErrorSnack(context, e);
@@ -149,13 +206,21 @@ class _PointRulesViewState extends State<PointRulesView> {
   }
 
   Future<void> _delete(PointRule rule) async {
+    if (_busyRuleIds.contains(rule.id)) return;
+    if (rule.inUse) {
+      showSnack(
+        context,
+        'Không thể xóa quy tắc đã cam kết; hãy tạm dừng nếu không dùng cho chuyến mới.',
+      );
+      return;
+    }
     final ok = await confirmDialog(context, 'Xóa quy tắc ${rule.ruleName}?');
     if (!ok) return;
     setState(() => _busyRuleIds.add(rule.id));
     try {
       await widget.controller.api.deletePointRule(rule.id);
       if (_editingId == rule.id) _reset();
-      await _load();
+      await _load(showLoading: false, showErrors: false);
     } catch (e) {
       if (!mounted) return;
       showErrorSnack(context, e);
@@ -204,8 +269,17 @@ class _PointRulesViewState extends State<PointRulesView> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
+    if (_loading && !_hasLoaded) {
       return const AppLoadingView(label: 'Đang chuẩn bị cơ chế điểm xanh…');
+    }
+    if (!_hasLoaded) {
+      return _EnterpriseDataErrorView(
+        title: 'Chưa tải được quy tắc điểm',
+        message: _error ?? 'Vui lòng kiểm tra kết nối và thử lại.',
+        onRetry: () async {
+          await _load();
+        },
+      );
     }
 
     final activeRules = _rules.where((rule) => rule.isActive).length;
@@ -235,6 +309,10 @@ class _PointRulesViewState extends State<PointRulesView> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      if (_error case final error?) ...[
+                        _EnterpriseRefreshError(message: error, onRetry: _load),
+                        const SizedBox(height: 14),
+                      ],
                       SectionTitle(
                         'Điểm xanh có chủ đích',
                         eyebrow: 'THIẾT KẾ ĐỘNG LỰC',
@@ -350,7 +428,11 @@ class _PointRulesViewState extends State<PointRulesView> {
       physics: const NeverScrollableScrollPhysics(),
       itemCount: metrics.length,
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: width >= 820 ? 4 : 2,
+        crossAxisCount: width >= 820
+            ? 4
+            : width < 360 || MediaQuery.textScalerOf(context).scale(1) > 1.35
+            ? 1
+            : 2,
         mainAxisExtent: 112,
         crossAxisSpacing: 12,
         mainAxisSpacing: 12,
@@ -400,7 +482,7 @@ class _PointRulesViewState extends State<PointRulesView> {
                       SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          'Bạn đang thay đổi một quy tắc hiện có. Các chuyến đã tiếp nhận không bị ảnh hưởng.',
+                          'Chỉ quy tắc chưa cam kết mới được sửa. Khi đã áp dụng cho chuyến, hệ thống sẽ khóa mức điểm để bảo vệ quyền lợi người dân.',
                           style: TextStyle(
                             color: AppPalette.ink,
                             fontWeight: FontWeight.w700,
@@ -646,7 +728,46 @@ class _PointRulesViewState extends State<PointRulesView> {
                             ),
                       ),
                       const SizedBox(height: 7),
-                      StatusChip(rule.isActive ? 'ACTIVE' : 'INACTIVE'),
+                      Wrap(
+                        spacing: 7,
+                        runSpacing: 7,
+                        children: [
+                          StatusChip(rule.isActive ? 'ACTIVE' : 'INACTIVE'),
+                          if (rule.inUse)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 9,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppPalette.amber.withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(
+                                  AppRadii.pill,
+                                ),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.lock_rounded,
+                                    size: 14,
+                                    color: AppPalette.apricot,
+                                  ),
+                                  SizedBox(width: 5),
+                                  Text(
+                                    'ĐÃ CAM KẾT',
+                                    style: TextStyle(
+                                      color: AppPalette.apricot,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: 0.5,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                        ],
+                      ),
                     ],
                   ),
                 ),
@@ -749,19 +870,27 @@ class _PointRulesViewState extends State<PointRulesView> {
                             ),
                       label: Text(rule.isActive ? 'Tạm dừng' : 'Kích hoạt'),
                     ),
-                    TextButton.icon(
-                      onPressed: busy ? null : () => _edit(rule),
-                      icon: const Icon(Icons.edit_rounded),
-                      label: const Text('Sửa'),
-                    ),
-                    TextButton.icon(
-                      onPressed: busy ? null : () => _delete(rule),
-                      style: TextButton.styleFrom(
-                        foregroundColor: AppPalette.danger,
+                    if (rule.inUse)
+                      TextButton.icon(
+                        onPressed: busy ? null : () => _duplicate(rule),
+                        icon: const Icon(Icons.copy_rounded),
+                        label: const Text('Tạo bản sao'),
+                      )
+                    else ...[
+                      TextButton.icon(
+                        onPressed: busy ? null : () => _edit(rule),
+                        icon: const Icon(Icons.edit_rounded),
+                        label: const Text('Sửa'),
                       ),
-                      icon: const Icon(Icons.delete_outline_rounded),
-                      label: const Text('Xóa'),
-                    ),
+                      TextButton.icon(
+                        onPressed: busy ? null : () => _delete(rule),
+                        style: TextButton.styleFrom(
+                          foregroundColor: AppPalette.danger,
+                        ),
+                        icon: const Icon(Icons.delete_outline_rounded),
+                        label: const Text('Xóa'),
+                      ),
+                    ],
                   ],
                 ),
               ],

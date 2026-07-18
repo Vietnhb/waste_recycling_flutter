@@ -9,8 +9,8 @@ class ImageUploadService {
     return files.take(max).toList();
   }
 
-  static Future<XFile?> pickImage() =>
-      _picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
+  static Future<XFile?> pickImage({required ImageSource source}) =>
+      _picker.pickImage(source: source, imageQuality: 85);
 
   static Future<String> upload(XFile file, String folder) async {
     final bytes = await file.readAsBytes();
